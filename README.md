@@ -10,4 +10,4 @@ Requires ruby >= 2.4, nokogiri (gem), activesupport (gem), faraday (gem), rmagic
 
 全国の地域コードを入力
 
-(img.png)
+![screenshot](https://user-images.githubusercontent.com/589440/81513083-46d23900-9315-11ea-8f0e-9d7351007e43.png)
