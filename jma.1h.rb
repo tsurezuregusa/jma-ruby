@@ -1,22 +1,23 @@
 #!/usr/bin/env ruby
 
 # <bitbar.title>Japan Weather</bitbar.title>
-# <bitbar.version>0.3</bitbar.version>
+# <bitbar.version>0.5</bitbar.version>
 # <bitbar.author.github>tsurezuregusa</bitbar.author.github>
 # <bitbar.desc>Display local weather in Japan</bitbar.desc>
-# <bitbar.dependencies>ruby >= 2.4, nokogiri (gem), activesupport (gem), faraday (gem), rmagick (gem) darksky-weather</bitbar.dependencies>
+# <bitbar.dependencies>ruby >= 2.4, nokogiri (gem), activesupport (gem), faraday (gem), rmagick (gem), darksky-weather</bitbar.dependencies>
 
 require 'open-uri'
 require 'faraday'
 require 'time'
 require 'json'
 require 'nkf'
+require 'base64'
 require 'rubygems'
 require 'nokogiri'
 require 'active_support/core_ext/numeric'
 require 'rmagick'
 
-$darkskyapi = 'd7322e9110f6e19513ac3a96fd70f435'
+$darkskyapi = nil
 $latlon = '35.6895,139.6917'
 $place = '東京'
 $area = '319'
@@ -83,6 +84,9 @@ $weeksub = 0
 $region = '206'
 # 206 Kanto
 
+$warnlocal = '1311300'
+# http://www.jma.go.jp/jp/warn/
+
 $local = '44126'
 # http://www.jma.go.jp/jp/amedas/000.html
 
@@ -99,13 +103,13 @@ $naoopt = 13
 ######
 
 class Time
-  def round_off(seconds = 60)
-    Time.at((self.to_f / seconds).round * seconds)
-  end
+	def round_off(seconds = 60)
+		Time.at((self.to_f / seconds).round * seconds)
+	end
 
-  def floor(seconds = 60)
-    Time.at((self.to_f / seconds).floor * seconds)
-  end
+	def floor(seconds = 60)
+		Time.at((self.to_f / seconds).floor * seconds)
+	end
 end
 
 $dt = Time.now
@@ -123,8 +127,18 @@ end
 $koyomi = Nokogiri::HTML(open("http://eco.mtk.nao.ac.jp/cgi-bin/koyomi/sunmoon.cgi"))
 $sunrise = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[0].text.strip)
 $sunset = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[2].text.strip)
-$moonrise = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[3].text.strip)
-$moonset = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[5].text.strip)
+moonrisetext = $koyomi.css('td').select{|text| text['class'] != 'left'}[3].text.strip
+if not moonrisetext['-']
+	$moonrise = moonrisetext
+else
+	$moonrise = Time.parse('0:00')
+end
+moonsettext = $koyomi.css('td').select{|text| text['class'] != 'left'}[5].text.strip
+if not moonsettext['-']
+	$moonrise = moonsettext
+else
+	$moonrise = Time.parse('0:00')
+end
 
 # cloudy, fine, fine night, rain, heavy rain, snow, heavy snow; then, occasional, once
 # 🌞🌝🌛🌜🌚🌕🌖🌗🌘🌑🌒🌓🌔🌙☀️🌤⛅️🌥☁️🌦🌧⛈🌩🌨❄️☃️⛄️🌬💨💧💦☔️☂️🌈⚡️✨☁︎☀︎☼☾☂︎❆❄︎
@@ -181,6 +195,36 @@ WIND = '💨'
 
 $yoho = Nokogiri::HTML(open("http://www.jma.go.jp/jp/yoho/#{$area}.html"))
 $week = Nokogiri::HTML(open("http://www.jma.go.jp/jp/week/#{$area}.html"))
+
+def typhoonimg
+	begin
+		img = Magick::Image::from_blob(URI.open('http://www.jma.go.jp/jp/typh/images/wide/all-00.png').read).first.crop(0,0,480,335, true)
+		return "| refresh=true image=#{Base64.encode64(img.to_blob).gsub(/\n/, '')}"
+	rescue
+		return '❌'
+	end
+end
+
+def typhooninfo
+	html = Nokogiri::HTML(open("http://www.jma.go.jp/jp/typh/"))
+	info = html.css('div').select{|text| text['class'] == 'typhoonInfo'}
+
+	typhid = html.xpath('//div[@class="typhoonInfo"]/@id')
+
+	typhlist = []
+
+	typhid.each do |typhoon|
+		typhlist.push(html.css('option').select{|text| text['value'] == typhoon.to_s}.first.text.delete('台風'))
+	end
+
+	typhinfo = ''
+	i = 0
+	info.each do |typhoon|
+		typhinfo += "--#{typhlist[i]} #{typhoon.css('td')[3].text unless typhoon.css('td')[3].text.match?('-')} #{typhoon.css('td')[5].text unless typhoon.css('td')[5].text.match?('-')} #{typhoon.css('td')[7].text}  #{typhoon.css('td')[13].text.split('(')[0].insert(-5,' ') unless not typhoon.css('td').text.include?('風速')}  #{typhoon.css('td')[15].text.insert(-4,' ')}  #{typhoon.css('td')[17].text.split('(')[0].insert(-4,' ')} (#{typhoon.css('td')[19].text.split('(')[0].insert(-4,' ') unless not typhoon.css('td').text.include?('風速')}) | color=#{$textcolor}\n".gsub(/   +/, '  ').gsub(/ っ/,'っ').gsub(/\(\)/,'')
+		i += 1
+	end
+	return typhinfo
+end
 
 ## yoho
 
@@ -305,6 +349,160 @@ def yohorain # today 0-6 6-12 12-18 18-24, tomorrow 0-6 6-12 12-18 18-24
 	end
 end
 
+def gaikyo
+	text = $yoho.css('pre').text.gsub(/天気概況.+?$\n/, '')
+	text.gsub!(/([\p{Hiragana}\p{Katakana}])\s*$\n/, '\1')
+	text.gsub!(/([一-龠々&&[^表]])\s*$\n/, '\1')
+	# text.gsub!(/([一-龠々])\s*$\n/, '\1')
+	text.gsub!(/\n\n\n/, "\n\n")
+	text.gsub!(/[しりが]、/, '\0\n')
+	text.gsub!(/。/, '\0\n')
+	text.gsub!(/\\n/, "\n")
+	text.gsub!(/\n^　+$\n/, "\n")
+	text.gsub!(/\n\n/, "\n")
+	text.gsub!(/\n\s*\n\s*\n/, "\n\n")
+	text = NKF.nkf('-X -w', text).tr('０-９．', '0-9.')
+	return text
+end
+
+def warning(html)
+	times = html.css('td').select{|t| t['class'] == "double_border title_time"}.map {|l| l.text.strip }
+	zero = times.each_index.select {|i| times[i].match?(/^0/)}.last
+	
+	warnings = []
+	table = html.css('table').select{|t| t['class'] == "WarnJikeiTable"}.first
+	temp = ''
+	table.css('tr')[3..-1].each do |l|
+		x = l.css('td').select{|t| t['rowspan'] =~ /\d+/}
+		y = l.css('td').select{|t| t['colspan'] =~ /\d+/}
+		z = l.css('td').select{|t| not (t['colspan'] =~ /\d+/ or t['rowspan'] =~ /\d+/ or t['class'] =~ /\w+/)}
+		
+		if x == [] or x.length == 0
+			x = temp
+		else
+			temp = x.first
+			x = x.first
+		end
+		str = ''
+		y.each {|z| str += z.text.strip.gsub(/（.+）/,'').gsub(/\(|\)/,'') + ' '}
+		if not z.first.nil? and z.first.text.match(/[一-龠々]/)
+			str += z.first.text + ' '
+		end
+		
+		list = l.css('td').select{|t| (t['class'] =~ /jikei_/ and not t['class'] =~ /type/ and not t['class'] =~ /rmks/) or not t['class'] =~ /jikei_/ and t.text != "陸上" and t.text != "海上" and t['colspan'].nil? and t['rowspan'].nil?}
+		remarks = l.css('td').select{|t| t['class'] =~ /jikei_/ and t['class'] =~ /rmks/}.map {|l| l.text.strip}
+		warnings.push(:type => x.text.strip, :detail => str.strip, :times => list, :remarks => remarks.join(' '))
+	end
+	
+	if warnings.length > 0
+		hash = []
+		warnings.each do |w|
+			warning = []
+			i = 0
+			w[:times].each do |t|
+				# puts t['class'].to_s
+				if t['class'].to_s.sub('jikei_','').split(' ').length > 1
+					warning.push(:class => t['class'].to_s.sub('jikei_','').split(' ').first, :type => t['class'].to_s.sub('jikei_','').split.last, :tag => t.text, :time => times[i])
+				elsif t['class'].nil? and t.text != ""
+					warning.push(:class => :data, :tag => t.text, :time => times[i])
+				else
+					warning.push(:class => t['class'].to_s.sub('jikei_','').split(' ').first, :tag => t.text, :time => times[i])
+				end
+				i += 1
+			end
+			hash.push(:warning => w[:type], :detail => w[:detail], :remarks => w[:remarks], :times => warning)
+		end
+		# puts hash.pretty_inspect
+		today = []
+		tomorrow = []
+		hash.each_with_index do |w,i|
+			str = w[:warning]
+			if w[:detail] != ''
+				str += " #{w[:detail]}"
+			end
+			if not w[:remarks].nil?
+				str += "（#{NKF.nkf('-X -w', w[:remarks]).tr('０-９．', '0-9.')}）"
+			else
+				str += "　"
+			end
+			types = w[:times].select {|t| t[:class] != "none" and t[:class] != "white" and not t[:time].nil? and not t[:class].nil? }.map {|l| {:class => l[:class],:type => l[:type]} }.uniq
+			# puts "types: #{types}"
+			types.each do |type|
+				# puts  w[:times].select {|t| t[:class] == type[:class]} 
+				first = w[:times].select {|t| t[:class] == type[:class] and t[:type] == type[:type]}.first[:time]
+				last = w[:times].select {|t| t[:class] == type[:class] and t[:type] == type[:type] and not t[:time].nil?}.last[:time]
+				
+				if type[:class] == "wrn"
+					str += " 警報 "
+				elsif type[:class] == "adv"
+					str += " 注意 "
+				end
+				if type[:type] =~ /arw_([EWSN]+)/
+					case $1
+					when "E"
+						str += "東"
+					when "W"
+						str += "西"
+					when "S"
+						str += "南"
+					when "N"
+						str += "北"
+					when "NE"
+						str += "東北"
+					when "SE"
+						str += "東南"
+					when "NW"
+						str += "西北"
+					when "SW"
+						str += "西南"
+					end
+					tags = w[:times].select {|t| t[:class] == type[:class]}.map {|l| l[:tag] }.uniq
+					if tags.length > 1
+						str += " #{tags.first}-#{tags.last} m/s "
+					elsif tags.length > 0
+						str += " #{tags.first} m/s "
+					end
+				elsif w[:warning] == "波浪"
+					tags = w[:times].select {|t| t[:class] == type[:class]}.map {|l| l[:tag] }.uniq
+					if tags.length > 1
+						str += "#{tags.first}-#{tags.last} m "
+					elsif tags.length > 0
+						str += "#{tags.first} m "
+					end
+				elsif w[:warning] == "高潮"
+					tags = w[:times].select {|t| t[:class] == type[:class]}.map {|l| l[:tag] }.uniq
+					if tags.length > 1
+						str += " #{tags.first}-#{tags.last} m "
+					elsif tags.length > 0
+						str += " #{tags.first} m "
+					end
+				elsif w[:detail] == "１時間最大雨量"
+					tags = w[:times].select {|t| t[:class] == type[:class] and not t[:time].nil?}.map {|l| l[:tag] }.uniq.reject(&:empty?)
+					if tags.length > 1
+						str += " #{tags.first}-#{tags.last} mm "
+					elsif tags.length > 0
+						str += " #{tags.first} mm "
+					end
+				end
+				
+				if times.index(first) >= zero
+					str += "#{first.split('-')[0]}-#{last.split('-')[1]}時 "
+					tomorrow.push(str)
+				elsif times.rindex(last) >= zero
+					str += "今日#{first.split('-')[0]}時-明日#{last.split('-')[1]}時 "
+					today.push(str)
+				else
+					str += "#{first.split('-')[0]}-#{last.split('-')[1]}時 "
+					today.push(str)
+				end
+			end
+		end
+		return today,tomorrow
+	else
+		return nil
+	end
+end
+
 ## week
 
 # date
@@ -376,6 +574,18 @@ def isnight
 		return true
 	else
 		return false
+	end
+end
+
+def ifdarkmode
+	if `/usr/bin/defaults read -g AppleInterfaceStyleSwitchesAutomatically 2> /dev/null`['1']
+		if $dt < ($sunrise + 1.hours) or $dt > ($sunset - 1.hours)
+			return true
+		else
+			return false
+		end
+	else
+		return true
 	end
 end
 
@@ -455,7 +665,7 @@ def forecasticon(text)
 	when "曇後雨"
 		icon = "#{CLOUDY} #{THEN} #{RAIN}"
 	when "曇後一時雨"
-		icon = "#{CLOUDY} #{THEN} #{CLOUDY} #{ONCE} #{RAIN}"
+		icon = "#{CLOUDY} #{ONCE} #{RAIN}"
 	when "曇後雪"
 		icon = "#{CLOUDY} #{THEN} #{SNOW}"
 	when "雨"
@@ -465,6 +675,8 @@ def forecasticon(text)
 	when "雨一時晴"
 		icon = "#{RAIN} #{ONCE} #{FINE}"
 	when "雨時々曇"
+		icon = "#{RAIN} #{OCCASIONAL} #{CLOUDY}"
+	when "雨時々止む"
 		icon = "#{RAIN} #{OCCASIONAL} #{CLOUDY}"
 	when "雨一時曇"
 		icon = "#{RAIN} #{ONCE} #{CLOUDY}"
@@ -512,7 +724,7 @@ def lightning(text)
 end
 
 def strongrain(text)
-	if text["強い雨"] | text["激しい雨"] | text["猛烈な雨"]
+	if text["強い雨"] or text["激しい雨"] or text["猛烈な雨"] or text["激しく　降る"]
 		return true
 	else
 		return false
@@ -605,6 +817,8 @@ def forecastdetailsicon(forecast,details,istoday)
 		else
 			icon = "#{FINE} #{THEN} #{CLOUDY}"
 		end
+	when "晴後時々曇"
+		icon = "#{FINE} #{THEN} #{FINECLOUD}"
 	when "晴後雨"
 		if strongrain(details)
 			if istoday and isnight
@@ -639,6 +853,8 @@ def forecastdetailsicon(forecast,details,istoday)
 		else
 			icon = "#{CLOUDY} #{OCCASIONAL} #{FINE}"
 		end
+	when "曇後時々晴"
+		icon = "#{CLOUDY} #{THEN} #{CLOUDFINE}"
 	when "曇一時晴"
 		if istoday and isnight
 			icon = "#{CLOUDY} #{ONCE} #{moon($dt)}"
@@ -678,6 +894,14 @@ def forecastdetailsicon(forecast,details,istoday)
 			icon = "#{CLOUDY} #{THEN} #{LIGHTNING}"
  		else
 			icon = "#{CLOUDY} #{THEN} #{RAIN}"
+		end
+	when "曇後時々雨"
+		if strongrain(details)
+			icon = "#{CLOUDY} #{OCCASIONAL} #{HEAVYRAIN}"
+		elsif lightning(details)
+			icon = "#{CLOUDY} #{OCCASIONAL} #{LIGHTNING}"
+ 		else
+			icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
 		end
 	when "曇後一時雨"
 		if strongrain(details)
@@ -738,6 +962,14 @@ def forecastdetailsicon(forecast,details,istoday)
 			end
 		end
 	when "雨時々曇"
+		if strongrain(details)
+			icon = "#{HEAVYRAIN} #{OCCASIONAL} #{CLOUDY}"
+		elsif lightning(details)
+			icon = "#{LIGHTNING} #{OCCASIONAL} #{CLOUDY}"
+		else
+			icon = "#{RAIN} #{OCCASIONAL} #{CLOUDY}"
+		end
+	when "雨時々止む"
 		if strongrain(details)
 			icon = "#{HEAVYRAIN} #{OCCASIONAL} #{CLOUDY}"
 		elsif lightning(details)
@@ -984,6 +1216,29 @@ rainfall = 0
 rain.css('td').select{|text| text['class'] == "block middle"}[0..$h-1].each do |line|
 	rainfall += line.text.to_f end
 
+
+if ifdarkmode
+	$textcolor = 'lightgray'
+	$advcolor = 'yellow'
+	$wrncolor = 'orange'
+	$textansi = '37'
+	$rainansi = '36'
+else
+	$textcolor = 'darkslategray'
+	$advcolor = 'orange red'
+	$wrncolor = 'red'
+	$textansi = '39' # 30 too dark, 39 too light
+	$rainansi = '1;36'
+end
+
+### warning
+
+if gaikyo.match?(/注意|警報/)
+	warningtoday,warningtomorrow = warning(Nokogiri::HTML(open("http://www.jma.go.jp/jp/warn/f_#{$warnlocal}.html")))
+	
+else
+	warningtoday = warningtomorrow = nil
+end
 ###
 
 darksky = JSON.parse(URI.open("https://api.darksky.net/forecast/#{$darkskyapi}/#{$latlon}?units=si").read)
@@ -1009,28 +1264,28 @@ puts "#{darkskyicon(icon)} #{temp}°"
 puts "---"
 puts "#{$place} | color=lightslategray"
 puts "---"
-puts "温  #{temp}° (#{apptemp}°) | color=lightgray"
-puts "湿  #{humidity}% (#{dewpoint}°) | color=lightgray"
-puts "圧  #{pressure} hPa | color=lightgray"
-puts "風  #{windspeed} m/s (#{gust} m/s) #{winddirconv(winddir)} | color=lightgray"
-puts "雲  #{clouds}% | color=lightgray"
-puts "雨  #{precip} mm/h (#{precipprob} mm/h) #{rainfall if rainfall > 0} #{'mm' if rainfall > 0} | color=lightgray"
-puts "視  #{visibility} km | color=lightgray"
-puts "紫  #{uv} | color=lightgray"
+puts "温  #{temp}° (#{apptemp}°) | color=#{$textcolor}"
+puts "湿  #{humidity}% (#{dewpoint}°) | color=#{$textcolor}"
+puts "圧  #{pressure} hPa | color=#{$textcolor}"
+puts "風  #{windspeed} m/s (#{gust} m/s) #{winddirconv(winddir)} | color=#{$textcolor}"
+puts "雲  #{clouds}% | color=#{$textcolor}"
+puts "雨  #{precip} mm/h (#{precipprob} mm/h) #{rainfall if rainfall > 0} #{'mm' if rainfall > 0} | color=#{$textcolor}"
+puts "視  #{visibility} km | color=#{$textcolor}"
+puts "紫  #{uv} | color=#{$textcolor}"
 
 # image forecast icon
 # puts "---"
-# puts "#{yohodate[0]} | color=lightgray"
+# puts "#{yohodate[0]} | color=#{$textcolor}"
 # formatyoho(yohotext[0]).each_line do |line|
-# 	puts "--#{line.strip} | color=lightgray"
+# 	puts "--#{line.strip} | color=#{$textcolor}"
 # end
-# puts "#{yohorain[0]} #{yohorain[1]} #{yohorain[2]} #{yohorain[3]} | color=lightgray | #{forecasticon(yohoicon[0])}"
-# puts "#{yohodate[1]} | color=lightgray"
+# puts "#{yohorain[0]} #{yohorain[1]} #{yohorain[2]} #{yohorain[3]} | color=#{$textcolor} | #{forecasticon(yohoicon[0])}"
+# puts "#{yohodate[1]} | color=#{$textcolor}"
 # formatyoho(yohotext[1]).each_line do |line|
-# 	puts "--#{line.strip} | color=lightgray"
+# 	puts "--#{line.strip} | color=#{$textcolor}"
 # end
-# puts "#{yohorain[4]} #{yohorain[5]} #{yohorain[6]} #{yohorain[7]} | color=lightgray | #{forecasticon(yohoicon[1])}"
-# puts "#{yohodate[2]} | color=lightgray"
+# puts "#{yohorain[4]} #{yohorain[5]} #{yohorain[6]} #{yohorain[7]} | color=#{$textcolor} | #{forecasticon(yohoicon[1])}"
+# puts "#{yohodate[2]} | color=#{$textcolor}"
 
 if weekdate[0].include? $today
 	w = 2
@@ -1041,35 +1296,92 @@ end
 puts "---"
 
 # today
-puts "#{yohodate[0]} | color=lightgray" #
-formatyoho(yohotext[0]).each_line do |line|
-	puts "--#{line.strip} | color=lightgray"
-end
-puts "\033[37m#{forecastdetailsicon(yohoicon[0],yohotext[0],true).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[0],yohotext[0],true)))}#{adjustspacing(forecastdetailsicon(yohoicon[0],yohotext[0],true),1)}\033[34m#{yohotemp[0].rjust(4)}\033[31m#{yohotemp[1].rjust(5)}    \033[36m#{yohorain[0].rjust(3)} #{yohorain[1].rjust(3)} #{yohorain[2].rjust(3)} #{yohorain[3].rjust(3)} | color=lightgray font=Menlo ansi=true"
-
-# tomorrow
-puts "#{yohodate[1]} | color=lightgray"
-formatyoho(yohotext[1]).each_line do |line|
-	puts "--#{line.strip} | color=lightgray ansi=true"
-end
-puts "\033[37m#{forecastdetailsicon(yohoicon[1],yohotext[1],false).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[1],yohotext[1],false)))}#{adjustspacing(forecastdetailsicon(yohoicon[1],yohotext[1],true),1)}\033[34m#{yohotemp[2].rjust(4)}\033[31m#{yohotemp[3].rjust(5)}    \033[36m#{yohorain[4].rjust(3)} #{yohorain[5].rjust(3)} #{yohorain[6].rjust(3)} #{yohorain[7].rjust(3)} | font=Menlo ansi=true"
-
-while w < 7
-	puts "#{weekdate[w]} | color=lightgray"
-	if w == 1
-		formatyoho(yohotext[2]).each_line do |line|
-			puts "--#{line.strip} | color=lightgray ansi=true"
+if warningtoday != []
+	if warningtoday.any? {|line| line.match("警報")}
+		puts "#{yohodate[0]} | color=#{$wrncolor}"
+	else
+		puts "#{yohodate[0]} | color=#{$advcolor}"
+	end
+	formatyoho(yohotext[0]).each_line do |line|
+		puts "--#{line.strip} | color=#{$textcolor}"
+	end
+	warningtoday.each do |line|
+		if line.match("警報")
+			puts "--#{line.strip} | color=#{$wrncolor}"
+		else
+			puts "--#{line.strip} | color=#{$advcolor}"
 		end
 	end
-	puts "\033[37m#{forecasticon(weekicon[w]).center(ICONLENGTH+adjustpadding(forecasticon(weekicon[w])))}#{adjustspacing(forecasticon(weekicon[w]),2)}\033[34m#{formatweektemp(weekmin[w])[0].rjust(2)} #{formatweektemp(weekmin[w])[1].rjust(4)}#{formatweektemp(weekmin[w])[2].rjust(3)} \033[31m#{formatweektemp(weekmax[w])[0].rjust(2)} #{formatweektemp(weekmax[w])[1].rjust(4)}#{formatweektemp(weekmax[w])[2].rjust(3)} \033[36m#{weekrain[w].rjust(3)} | font=Menlo ansi=true"
+else
+	puts "#{yohodate[0]} | color=#{$textcolor}"
+	formatyoho(yohotext[0]).each_line do |line|
+		puts "--#{line.strip} | color=#{$textcolor}"
+	end
+end
+
+if $t.hour >= 18
+	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[0],yohotext[0],true).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[0],yohotext[0],true)))}#{adjustspacing(forecastdetailsicon(yohoicon[0],yohotext[0],true),1)}\033[34m#{" ".rjust(4)}\033[31m#{" ".rjust(5)}   \033[#{$rainansi}m#{yohorain[0].rjust(3)} #{yohorain[1].rjust(3)} #{yohorain[2].rjust(3)} #{yohorain[3].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
+else
+	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[0],yohotext[0],true).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[0],yohotext[0],true)))}#{adjustspacing(forecastdetailsicon(yohoicon[0],yohotext[0],true),1)}\033[34m#{yohotemp[0].rjust(4)}\033[31m#{yohotemp[1].rjust(5)}   \033[#{$rainansi}m#{yohorain[0].rjust(3)} #{yohorain[1].rjust(3)} #{yohorain[2].rjust(3)} #{yohorain[3].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
+end
+
+# tomorrow
+if warningtomorrow != []
+	if warningtomorrow.any? {|line| line.match("警報")}
+		puts "#{yohodate[0]} | color=#{$wrncolor}"
+	else
+		puts "#{yohodate[0]} | color=#{$advcolor}"
+	end
+	formatyoho(yohotext[1]).each_line do |line|
+		puts "--#{line.strip} | color=#{$textcolor} ansi=true"
+	end
+	warningtomorrow.each do |line|
+		if line.match("警報")
+			puts "--#{line.strip} | color=#{$wrncolor}"
+		else
+			puts "--#{line.strip} | color=#{$advcolor}"
+		end
+	end
+else
+	puts "#{yohodate[1]} | color=#{$textcolor}"
+	formatyoho(yohotext[1]).each_line do |line|
+		puts "--#{line.strip} | color=#{$textcolor} ansi=true"
+	end
+end
+if $t.hour >= 18
+	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[1],yohotext[1],false).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[1],yohotext[1],false)))}#{adjustspacing(forecastdetailsicon(yohoicon[1],yohotext[1],true),1)}\033[34m#{yohotemp[0].rjust(4)}\033[31m#{yohotemp[1].rjust(5)}   \033[#{$rainansi}m#{yohorain[4].rjust(3)} #{yohorain[5].rjust(3)} #{yohorain[6].rjust(3)} #{yohorain[7].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
+else
+	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[1],yohotext[1],false).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[1],yohotext[1],false)))}#{adjustspacing(forecastdetailsicon(yohoicon[1],yohotext[1],true),1)}\033[34m#{yohotemp[2].rjust(4)}\033[31m#{yohotemp[3].rjust(5)}   \033[#{$rainansi}m#{yohorain[4].rjust(3)} #{yohorain[5].rjust(3)} #{yohorain[6].rjust(3)} #{yohorain[7].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
+end
+
+while w < 7
+	puts "#{weekdate[w]} | color=#{$textcolor}"
+	if w == 1
+		formatyoho(yohotext[2]).each_line do |line|
+			puts "--#{line.strip} | color=#{$textcolor} ansi=true"
+		end
+	end
+	puts "\033[#{$textansi}m#{forecasticon(weekicon[w]).center(ICONLENGTH+adjustpadding(forecasticon(weekicon[w])))}#{adjustspacing(forecasticon(weekicon[w]),2)}\033[34m#{formatweektemp(weekmin[w])[0].rjust(2)} #{formatweektemp(weekmin[w])[1].rjust(4)}#{formatweektemp(weekmin[w])[2].rjust(3)} \033[31m#{formatweektemp(weekmax[w])[0].rjust(2)} #{formatweektemp(weekmax[w])[1].rjust(4)}#{formatweektemp(weekmax[w])[2].rjust(3)} \033[#{$rainansi}m#{weekrain[w].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
 	w += 1
 end
 
 puts "---"
-puts "レーダー | ansi=false color=lightgray"
+puts "天気概況 | ansi=false color=#{$textcolor}"
+gaikyo.each_line do |line|
+	puts "--#{line.strip} | color=#{$textcolor} ansi=true"
+end
+puts "レーダー | ansi=false color=#{$textcolor}"
 puts "--#{r64}"
-puts "衛星 | color=lightgray"
+puts "衛星 | color=#{$textcolor}"
 puts "--#{s64}"
+if $dt.month > 7 and $dt.month < 11
+	puts "台風情報 | ansi=false color=#{$textcolor}"
+	typhoonout = typhooninfo
+	if typhoonout.match?(/\d/)
+		puts "--#{typhoonimg}"
+		puts typhooninfo
+	end
+end
 puts "---"
 
 puts "---"
