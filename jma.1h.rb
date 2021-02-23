@@ -13,13 +13,20 @@ require 'json'
 require 'nkf'
 require 'base64'
 require 'rubygems'
-require 'nokogiri'
+require 'active_support'
 require 'active_support/core_ext/numeric'
+require 'nokogiri'
 require 'rmagick'
 
-$darkskyapi = nil
+$darkskyapi = 'xxx'
 $latlon = '35.6895,139.6917'
 $place = '東京'
+
+# $openweatherapi = 'xxx'
+$openweatherloc = '1850147'
+$visualcrossingapi = 'xxx'
+$climacellapi = 'xxx'
+
 $area = '319'
 $subarea = 0
 $weeksub = 0
@@ -84,11 +91,9 @@ $weeksub = 0
 $region = '206'
 # 206 Kanto
 
-$warnlocal = '1311300'
-# http://www.jma.go.jp/jp/warn/
-
 $local = '44126'
 # http://www.jma.go.jp/jp/amedas/000.html
+$amedas = '44132'
 
 $satfreq = 'gms150jp'
 # 'gms' <- 10m
@@ -99,6 +104,9 @@ $sattype = 'colorenhanced'
 # colorenhanced Feb-April night unavailable
 
 $naoopt = 13
+
+$warnlocal = '1311300'
+# http://www.jma.go.jp/jp/warn/
 
 ######
 
@@ -113,49 +121,63 @@ class Time
 end
 
 $dt = Time.now
-$d = $dt.strftime("%Y%m%d")
-$today = Time.now.strftime("%-d")
-$t = Time.now
-$h = ($t-6.minutes).strftime("%H").to_i
-$tr = $t.floor(5.minutes).strftime("%H%M")
+$dymd = $dt.strftime("%Y%m%d")
+$dy = $dt.strftime("%j").to_i
+$dw = Time.now.strftime("%-d")
+$dh = ($dt-6.minutes).strftime("%H").to_i
+$tr = $dt.floor(5.minutes).strftime("%H%M")
 if $satfreq == 'gms150jp'
-	$ts = ($t-6.minutes).floor(150.seconds).strftime("%H%M%S")
+	$ts = ($dt-6.minutes).floor(150.seconds).strftime("%H%M%S")
 else
-	$ts = ($t-8.minutes).floor(10.minutes).strftime("%H%M")
+	$ts = ($dt-8.minutes).floor(10.minutes).strftime("%H%M")
 end
 
-$koyomi = Nokogiri::HTML(open("http://eco.mtk.nao.ac.jp/cgi-bin/koyomi/sunmoon.cgi"))
-$sunrise = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[0].text.strip)
-$sunset = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[2].text.strip)
-moonrisetext = $koyomi.css('td').select{|text| text['class'] != 'left'}[3].text.strip
-if not moonrisetext['-']
-	$moonrise = moonrisetext
-else
-	$moonrise = Time.parse('0:00')
-end
-moonsettext = $koyomi.css('td').select{|text| text['class'] != 'left'}[5].text.strip
-if not moonsettext['-']
-	$moonrise = moonsettext
-else
-	$moonrise = Time.parse('0:00')
+begin
+	$koyomi = Nokogiri::HTML(URI.open("http://eco.mtk.nao.ac.jp/cgi-bin/koyomi/sunmoon.cgi"))
+	$sunrise = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[0].text.strip)
+	$sunset = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[2].text.strip)
+	moonrisetext = $koyomi.css('td').select{|text| text['class'] != 'left'}[3].text.strip
+	if not moonrisetext['-']
+		$moonrise = moonrisetext
+	else
+		$moonrise = Time.parse('0:00')
+	end
+	moonsettext = $koyomi.css('td').select{|text| text['class'] != 'left'}[5].text.strip
+	if not moonsettext['-']
+		$moonrise = moonsettext
+	else
+		$moonrise = Time.parse('0:00')
+	end
+rescue
+	$koyomi = Nokogiri::HTML(URI.open("http://www.hinode-hinoiri.com/131130.html"))
+	$sunrise = Time.parse($koyomi.css('td').select{|text| text['table_line'] != 'left'}[1].text.sub('時',':').sub('分','').strip)
+	$sunset = Time.parse($koyomi.css('td').select{|text| text['table_line'] != 'left'}[3].text.sub('時',':').sub('分','').strip)
+	# TODO moonrise/set
+	moonrisetext = $koyomi.css('td').select{|text| text['class'] != 'left'}[3].text.strip
+	if not moonrisetext['-']
+		$moonrise = moonrisetext
+	else
+		$moonrise = Time.parse('0:00')
+	end
+	moonsettext = $koyomi.css('td').select{|text| text['class'] != 'left'}[5].text.strip
+	if not moonsettext['-']
+		$moonrise = moonsettext
+	else
+		$moonrise = Time.parse('0:00')
+	end
 end
 
 # cloudy, fine, fine night, rain, heavy rain, snow, heavy snow; then, occasional, once
 # 🌞🌝🌛🌜🌚🌕🌖🌗🌘🌑🌒🌓🌔🌙☀️🌤⛅️🌥☁️🌦🌧⛈🌩🌨❄️☃️⛄️🌬💨💧💦☔️☂️🌈⚡️✨☁︎☀︎☼☾☂︎❆❄︎
 
 CLOUDY = '☁️'
-
 FINE = '☀️'
-
 FINENIGHT = '🌙'
-
 RAIN = '💧'
-
 HEAVYRAIN = '💦'
-
 SNOW = '❄️'
-
 HEAVYSNOW = '☃️'
+FOG = '🌫'
 
 # THEN = '∕'
 # THEN = ' → '
@@ -183,48 +205,17 @@ OCCASIONAL = '⟳'
 ONCE = '⥄'
 # ONCE = '↩️'
 
+FINECLOUD = '🌤'
+CLOUDFINE = '⛅️'
+MOSTCLOUD = '🌥'
+LIGHTNING = '⚡️'
+WIND = '💨'
+ICE = '🧊'
+
 ICONLENGTH = 7.5
 
-FINECLOUD = '🌤'
-
-CLOUDFINE = '⛅️'
-
-LIGHTNING = '⚡️'
-
-WIND = '💨'
-
-$yoho = Nokogiri::HTML(open("http://www.jma.go.jp/jp/yoho/#{$area}.html"))
-$week = Nokogiri::HTML(open("http://www.jma.go.jp/jp/week/#{$area}.html"))
-
-def typhoonimg
-	begin
-		img = Magick::Image::from_blob(URI.open('http://www.jma.go.jp/jp/typh/images/wide/all-00.png').read).first.crop(0,0,480,335, true)
-		return "| refresh=true image=#{Base64.encode64(img.to_blob).gsub(/\n/, '')}"
-	rescue
-		return '❌'
-	end
-end
-
-def typhooninfo
-	html = Nokogiri::HTML(open("http://www.jma.go.jp/jp/typh/"))
-	info = html.css('div').select{|text| text['class'] == 'typhoonInfo'}
-
-	typhid = html.xpath('//div[@class="typhoonInfo"]/@id')
-
-	typhlist = []
-
-	typhid.each do |typhoon|
-		typhlist.push(html.css('option').select{|text| text['value'] == typhoon.to_s}.first.text.delete('台風'))
-	end
-
-	typhinfo = ''
-	i = 0
-	info.each do |typhoon|
-		typhinfo += "--#{typhlist[i]} #{typhoon.css('td')[3].text unless typhoon.css('td')[3].text.match?('-')} #{typhoon.css('td')[5].text unless typhoon.css('td')[5].text.match?('-')} #{typhoon.css('td')[7].text}  #{typhoon.css('td')[13].text.split('(')[0].insert(-5,' ') unless not typhoon.css('td').text.include?('風速')}  #{typhoon.css('td')[15].text.insert(-4,' ')}  #{typhoon.css('td')[17].text.split('(')[0].insert(-4,' ')} (#{typhoon.css('td')[19].text.split('(')[0].insert(-4,' ') unless not typhoon.css('td').text.include?('風速')}) | color=#{$textcolor}\n".gsub(/   +/, '  ').gsub(/ っ/,'っ').gsub(/\(\)/,'')
-		i += 1
-	end
-	return typhinfo
-end
+$yoho = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/yoho/#{$area}.html"))
+$week = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/week/#{$area}.html"))
 
 ## yoho
 
@@ -355,7 +346,8 @@ def gaikyo
 	text.gsub!(/([一-龠々&&[^表]])\s*$\n/, '\1')
 	# text.gsub!(/([一-龠々])\s*$\n/, '\1')
 	text.gsub!(/\n\n\n/, "\n\n")
-	text.gsub!(/[しりが]、/, '\0\n')
+	text.gsub!(/[^線][しりが]、/, '\0\n')
+	text.gsub!(/[^の]ため、/, '\0\n')
 	text.gsub!(/。/, '\0\n')
 	text.gsub!(/\\n/, "\n")
 	text.gsub!(/\n^　+$\n/, "\n")
@@ -401,12 +393,23 @@ def warning(html)
 			i = 0
 			w[:times].each do |t|
 				# puts t['class'].to_s
-				if t['class'].to_s.sub('jikei_','').split(' ').length > 1
-					warning.push(:class => t['class'].to_s.sub('jikei_','').split(' ').first, :type => t['class'].to_s.sub('jikei_','').split.last, :tag => t.text, :time => times[i])
-				elsif t['class'].nil? and t.text != ""
-					warning.push(:class => :data, :tag => t.text, :time => times[i])
+				if t.text != '' and not t.text.match?(/[0-9]/)
+					i -= 1
+					tag = nil
+					time = nil
+				elsif t.text != '' and t.text.match?(/[0-9]/)
+					tag = t.text
+					time = times[i]
 				else
-					warning.push(:class => t['class'].to_s.sub('jikei_','').split(' ').first, :tag => t.text, :time => times[i])
+					tag = nil
+					time = times[i]
+				end
+				if t['class'].to_s.sub('jikei_','').split(' ').length > 1
+					warning.push(:class => t['class'].to_s.sub('jikei_','').split(' ').first, :type => t['class'].to_s.sub('jikei_','').split.last, :tag => tag, :time => time)
+				elsif t['class'].nil? and t.text != ""
+					warning.push(:class => :data, :tag => tag, :time => times[i])
+				elsif t['class'].to_s.match?("jikei")
+					warning.push(:class => t['class'].to_s.sub('jikei_','').split(' ').first, :tag => tag, :time => time)
 				end
 				i += 1
 			end
@@ -418,24 +421,17 @@ def warning(html)
 		hash.each_with_index do |w,i|
 			str = w[:warning]
 			if w[:detail] != ''
-				str += " #{w[:detail]}"
+				str += "　#{w[:detail]}"
 			end
-			if not w[:remarks].nil?
-				str += "（#{NKF.nkf('-X -w', w[:remarks]).tr('０-９．', '0-9.')}）"
-			else
-				str += "　"
-			end
-			types = w[:times].select {|t| t[:class] != "none" and t[:class] != "white" and not t[:time].nil? and not t[:class].nil? }.map {|l| {:class => l[:class],:type => l[:type]} }.uniq
-			# puts "types: #{types}"
+			types = w[:times].select {|t| t[:class] != "none" and t[:class] != "white" and not t[:time].nil? and not t[:class].nil?}.map {|l| {:class => l[:class],:type => l[:type]} }.uniq
 			types.each do |type|
-				# puts  w[:times].select {|t| t[:class] == type[:class]} 
+				# puts  w[:times].select {|t| t[:class] == type[:class]}
 				first = w[:times].select {|t| t[:class] == type[:class] and t[:type] == type[:type]}.first[:time]
 				last = w[:times].select {|t| t[:class] == type[:class] and t[:type] == type[:type] and not t[:time].nil?}.last[:time]
-				
 				if type[:class] == "wrn"
-					str += " 警報 "
+					str += "　警報　"
 				elsif type[:class] == "adv"
-					str += " 注意 "
+					str += "　注意　"
 				end
 				if type[:type] =~ /arw_([EWSN]+)/
 					case $1
@@ -456,51 +452,95 @@ def warning(html)
 					when "SW"
 						str += "西南"
 					end
+					str.gsub!(/風向風速.?矢印・メートル.?/,'')
 					tags = w[:times].select {|t| t[:class] == type[:class]}.map {|l| l[:tag] }.uniq
 					if tags.length > 1
-						str += " #{tags.first}-#{tags.last} m/s "
+						str += "　#{tags.first}〜#{tags.last} m/s　"
 					elsif tags.length > 0
-						str += " #{tags.first} m/s "
+						str += "　#{tags.first} m/s　"
 					end
 				elsif w[:warning] == "波浪"
 					tags = w[:times].select {|t| t[:class] == type[:class]}.map {|l| l[:tag] }.uniq
 					if tags.length > 1
-						str += "#{tags.first}-#{tags.last} m "
+						str += "#{tags.first}-#{tags.last} m　"
 					elsif tags.length > 0
-						str += "#{tags.first} m "
+						str += "#{tags.first} m　"
 					end
 				elsif w[:warning] == "高潮"
 					tags = w[:times].select {|t| t[:class] == type[:class]}.map {|l| l[:tag] }.uniq
 					if tags.length > 1
-						str += " #{tags.first}-#{tags.last} m "
+						str += "#{tags.first}-#{tags.last} m　"
 					elsif tags.length > 0
-						str += " #{tags.first} m "
+						str += "#{tags.first} m　"
 					end
 				elsif w[:detail] == "１時間最大雨量"
 					tags = w[:times].select {|t| t[:class] == type[:class] and not t[:time].nil?}.map {|l| l[:tag] }.uniq.reject(&:empty?)
 					if tags.length > 1
-						str += " #{tags.first}-#{tags.last} mm "
+						str += " #{tags.first}-#{tags.last} mm　"
 					elsif tags.length > 0
-						str += " #{tags.first} mm "
+						str += " #{tags.first} mm　"
 					end
 				end
-				
 				if times.index(first) >= zero
-					str += "#{first.split('-')[0]}-#{last.split('-')[1]}時 "
-					tomorrow.push(str)
+					str += "明日#{first.split('-')[0]}〜#{last.split('-')[1]}時　・"
 				elsif times.rindex(last) >= zero
-					str += "今日#{first.split('-')[0]}時-明日#{last.split('-')[1]}時 "
-					today.push(str)
+					str += "今日#{first.split('-')[0]}時〜明日#{last.split('-')[1]}時　・"
 				else
-					str += "#{first.split('-')[0]}-#{last.split('-')[1]}時 "
-					today.push(str)
+					str += "#{first.split('-')[0]}〜#{last.split('-')[1]}時　・"
 				end
+			end
+			str.sub!(/・$/,'')
+			if not w[:remarks].nil? and w[:remarks] != ''
+				str += "（#{NKF.nkf('-X -w', w[:remarks]).tr('０-９．', '0-9.')}）"
+			end
+			if str.match?("明日") and not str.match?("今日")
+				tomorrow.push(str)
+			else
+				today.push(str)
 			end
 		end
 		return today,tomorrow
 	else
 		return nil
 	end
+end
+
+def typhoonimg
+	begin
+		img = Magick::Image::from_blob(URI.open('http://www.jma.go.jp/jp/typh/images/wide/all-00.png').read).first.crop(0,0,480,335, true)
+		return "| refresh=true image=#{Base64.encode64(img.to_blob).gsub(/\n/, '')}"
+	rescue
+		return '❌'
+	end
+end
+
+def typhooninfo(html)
+	info = html.css('div').select{|text| text['class'] == 'typhoonInfo'}
+
+	typhid = html.xpath('//div[@class="typhoonInfo"]/@id')
+
+	typhlist = []
+
+	typhid.each do |typhoon|
+		typhlist.push(html.css('option').select{|text| text['value'] == typhoon.to_s}.first.text.delete('台風'))
+	end
+
+	typhinfo = ''
+	i = 0
+	info.each do |typhoon|
+		typhinfo += "--#{typhlist[i]} "
+		typhinfo += "#{typhoon.css('td')[3].text unless typhoon.css('td')[3].text.match?('-')} "
+		typhinfo += "#{typhoon.css('td')[5].text unless typhoon.css('td')[5].text.match?('-')} "
+		typhinfo += "#{typhoon.css('td')[7].text} "
+		typhinfo += " #{typhoon.css('td')[13].text.split('(')[0].insert(-5,' ') unless not typhoon.css('td').text.include?('風速')}  "
+		typhinfo += "#{typhoon.css('td')[15].text.insert(-4,' ').gsub(/\(\d+ kt\)/,'').gsub(/(\d+)(km\/h)/,'\\1 \\2')} "
+		typhinfo += " #{typhoon.css('td')[17].text.split('(')[0].insert(-4,' ')} "
+		typhinfo += "(#{typhoon.css('td')[19].text.split('(')[0].insert(-4,' ') unless not typhoon.css('td').text.include?('風速')})"
+		typhinfo = typhinfo.gsub(/   +/, '  ').gsub(/ っ/,'っ').gsub(/\(\)/,'')
+		typhinfo += " | color=#{$textcolor}\n"
+		i += 1
+	end
+	return typhinfo
 end
 
 ## week
@@ -654,9 +694,17 @@ def forecasticon(text)
 		icon = "#{CLOUDY} #{ONCE} #{FINE}"
 	when "曇時々雨"
 		icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
+	when "曇時々雨か雪"
+		icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
 	when "曇一時雨"
 		icon = "#{CLOUDY} #{ONCE} #{RAIN}"
+	when "曇一時雨か雪"
+		icon = "#{CLOUDY} #{ONCE} #{RAIN}"
+	when "曇一時雪か雨"
+		icon = "#{CLOUDY} #{ONCE} #{SNOW}"
 	when "曇時々雪"
+		icon = "#{CLOUDY} #{OCCASIONAL} #{SNOW}"
+	when "曇時々雪か雨"
 		icon = "#{CLOUDY} #{OCCASIONAL} #{SNOW}"
 	when "曇一時雪"
 		icon = "#{CLOUDY} #{ONCE} #{SNOW}"
@@ -869,6 +917,14 @@ def forecastdetailsicon(forecast,details,istoday)
  		else
 			icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
 		end
+	when "曇時々雨か雪"
+		if strongrain(details)
+			icon = "#{CLOUDY} #{OCCASIONAL} #{HEAVYRAIN}"
+		elsif lightning(details)
+			icon = "#{CLOUDY} #{OCCASIONAL} #{LIGHTNING}"
+ 		else
+			icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
+		end
 	when "曇一時雨"
 		if strongrain(details)
 			icon = "#{CLOUDY} #{ONCE} #{HEAVYRAIN}"
@@ -879,8 +935,26 @@ def forecastdetailsicon(forecast,details,istoday)
 		end
 	when "曇時々雪"
 		icon = "#{CLOUDY} #{OCCASIONAL} #{SNOW}"
+	when "曇時々雪か雨"
+		icon = "#{CLOUDY} #{OCCASIONAL} #{SNOW}"
 	when "曇一時雪"
 		icon = "#{CLOUDY} #{ONCE} #{SNOW}"
+	when "曇一時雨か雪"
+		if strongrain(details)
+			icon = "#{CLOUDY} #{ONCE} #{HEAVYRAIN}"
+		elsif lightning(details)
+			icon = "#{CLOUDY} #{ONCE} #{LIGHTNING}"
+ 		else
+			icon = "#{CLOUDY} #{ONCE} #{RAIN}"
+		end
+	when "曇一時雪か雨"
+		if strongrain(details)
+			icon = "#{CLOUDY} #{ONCE} #{HEAVYSNOW}"
+		elsif lightning(details)
+			icon = "#{CLOUDY} #{ONCE} #{LIGHTNING}"
+ 		else
+			icon = "#{CLOUDY} #{ONCE} #{SNOW}"
+		end
 	when "曇後晴"
 		if istoday and isnight
 			icon = "#{CLOUDY} #{THEN} #{moon($dt)}"
@@ -888,6 +962,14 @@ def forecastdetailsicon(forecast,details,istoday)
 			icon = "#{CLOUDY} #{THEN} #{FINE}"
 		end
 	when "曇後雨"
+		if strongrain(details)
+			icon = "#{CLOUDY} #{THEN} #{HEAVYRAIN}"
+		elsif lightning(details)
+			icon = "#{CLOUDY} #{THEN} #{LIGHTNING}"
+ 		else
+			icon = "#{CLOUDY} #{THEN} #{RAIN}"
+		end
+	when "曇後雨か雪"
 		if strongrain(details)
 			icon = "#{CLOUDY} #{THEN} #{HEAVYRAIN}"
 		elsif lightning(details)
@@ -914,6 +996,14 @@ def forecastdetailsicon(forecast,details,istoday)
 	when "曇後雪"
 		icon = "#{CLOUDY} #{THEN} #{SNOW}"
 	when "雨"
+		if strongrain(details)
+			icon = "#{HEAVYRAIN}"
+		elsif lightning(details)
+			icon = "#{LIGHTNING}"
+		else
+			icon = "#{RAIN}"
+		end
+	when "雨か雪"
 		if strongrain(details)
 			icon = "#{HEAVYRAIN}"
 		elsif lightning(details)
@@ -1029,6 +1119,14 @@ def forecastdetailsicon(forecast,details,istoday)
 		else
 			icon = "#{RAIN} #{THEN} #{CLOUDY}"
 		end
+	when "雨か雪後曇"
+		if strongrain(details)
+			icon = "#{HEAVYRAIN} #{THEN} #{CLOUDY}"
+		elsif lightning(details)
+			icon = "#{LIGHTNING} #{THEN} #{CLOUDY}"
+		else
+			icon = "#{RAIN} #{THEN} #{CLOUDY}"
+		end
 	when "雨後雪"
 		if strongrain(details)
 			icon = "#{HEAVYRAIN} #{THEN} #{SNOW}"
@@ -1039,11 +1137,15 @@ def forecastdetailsicon(forecast,details,istoday)
 		end
 	when "雪"
 		icon = "#{SNOW}"
+	when "雪か雨"
+		icon = "#{SNOW}"
 	when "雪時々晴"
 		icon = "#{SNOW} #{OCCASIONAL} #{FINE}"
 	when "雪一時晴"
 		icon = "#{SNOW} #{ONCE} #{FINE}"
 	when "雪時々曇"
+		icon = "#{SNOW} #{OCCASIONAL} #{CLOUDY}"
+	when "雪時々止む"
 		icon = "#{SNOW} #{OCCASIONAL} #{CLOUDY}"
 	when "雪一時曇"
 		icon = "#{SNOW} #{ONCE} #{CLOUDY}"
@@ -1114,6 +1216,73 @@ def darkskyicon(text)
 	end
 end
 
+def climacellicon(code)
+	case code
+	when 0 # Unknown
+		icon = "❓"
+	when 1000 # Clear
+		if isnight
+			icon = moon($dt)
+		else
+			icon = "#{FINE}"
+		end
+	when 1001 # Cloudy
+		icon = "#{CLOUDY}"
+	when 1100 # Mostly Clear
+		if isnight
+			icon = moon($dt)
+		else
+			icon = "#{FINECLOUD}"
+		end
+	when 1101 # Partly Cloudy
+		icon = "#{CLOUDFINE}"
+	when 1102 # Mostly Cloudy
+		icon = "#{MOSTCLOUD}"
+	when 2000 # Fog
+		icon = "#{FOG}"
+	when 2100 # Light Fog
+		icon = "#{FOG}"
+	when 3000 # Light Wind
+		icon = "#{WIND}"
+	when 3001 # Wind
+		icon = "#{WIND}"
+	when 3002 # Strong Wind
+		icon = "#{WIND}"
+	when 4000 # Drizzle
+		icon = "#{RAIN}"
+	when 4001 # Rain
+		icon = "#{RAIN}"
+	when 4200 # Light Rain
+		icon = "#{RAIN}"
+	when 4201 # Heavy Rain
+		icon = "#{HEAVYRAIN}"
+	when 5000 # Snow
+		icon = "#{SNOW}"
+	when 5001 # Flurries
+		icon = "#{SNOW}"
+	when 5100 # Light Snow
+		icon = "#{SNOW}"
+	when 5101 # Heavy Snow
+		icon = "#{HEAVYSNOW}"
+	when 6000 # Freezing Drizzle
+		icon = "#{RAIN}"
+	when 6001 # Freezing Rain
+		icon = "#{HEAVYRAIN}"
+	when 6200 # Light Freezing Rain
+		icon = "#{ICE}"
+	when 6201 # Heavy Freezing Rain
+		icon = "#{ICE}"
+	when 7000 # Ice Pellets
+		icon = "#{ICE}"
+	when 7101 # Heavy Ice Pellets
+		icon = "#{ICE}"
+	when 7102 # Light Ice Pellets
+		icon = "#{ICE}"
+	when 8000 # Thunderstorm
+		icon = "#{LIGHTNING}"
+	end
+end
+
 def formatyoho(text)
 	text.gsub!(/くもり/, '曇り')
 	text.gsub!(/波/, '\n\0')
@@ -1142,7 +1311,7 @@ def formatweekrain(text)
 end
 
 def formatweektemp(text) # only [>=2]
-	[text[/^(\d+)/],text[/(\(\d+)～/],text[/(\d+)\)/]]
+	[text[/^([\d-]+)/],text[/(\([\d-]+)～/],text[/([\d-]+)\)/]]
 end
 
 def winddirconv(degree)
@@ -1193,16 +1362,16 @@ def adjustspacing(string, length)
 end
 
 begin
-	radar = URI.open("https://www.jma.go.jp/jp/radnowc/imgs/radar/#{$region}/#{$d}#{$tr}-00.png").read
+	radar = URI.open("https://www.jma.go.jp/jp/radnowc/imgs/radar/#{$region}/#{$dymd}#{$tr}-00.png").read
 	r64 = "| refresh=true image=#{Base64.encode64(radar).gsub(/\n/, '')}"
 rescue
 	r64 = '⚠️'
 end
 
 begin
-	u = "http://www.jma.go.jp/jp/#{$satfreq}/imgs/0/#{$sattype}/1/#{$d}#{$ts}-00.png"
+	u = "http://www.jma.go.jp/jp/#{$satfreq}/imgs/0/#{$sattype}/1/#{$dymd}#{$ts}-00.png"
 	if Faraday.head(u).status != 200
-		u = "http://www.jma.go.jp/jp/#{$satfreq}/imgs/0/infrared/1/#{$d}#{$ts}-00.png"
+		u = "http://www.jma.go.jp/jp/#{$satfreq}/imgs/0/infrared/1/#{$dymd}#{$ts}-00.png"
 	end
 	satellite = URI.open(u).read
 	s64 = "| refresh=true image=#{Base64.encode64(satellite).gsub(/\n/, '')}"
@@ -1210,10 +1379,10 @@ rescue
 	s64 = '⚠️'
 end
 
-rain = Nokogiri::HTML(open("http://www.jma.go.jp/jp/amedas_h/today-#{$local}.html"))
+rain = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/amedas_h/today-#{$local}.html"))
 
 rainfall = 0
-rain.css('td').select{|text| text['class'] == "block middle"}[0..$h-1].each do |line|
+rain.css('td').select{|text| text['class'] == "block middle"}[0..$dh-1].each do |line|
 	rainfall += line.text.to_f end
 
 
@@ -1233,45 +1402,151 @@ end
 
 ### warning
 
-if gaikyo.match?(/注意|警報/)
-	warningtoday,warningtomorrow = warning(Nokogiri::HTML(open("http://www.jma.go.jp/jp/warn/f_#{$warnlocal}.html")))
-	
+if gaikyo.match?(/注意|警報|警戒|非常|大雨|洪水|強風|暴風|風雪|大雪|波浪|高潮|雷|融雪|濃霧|乾燥|なだれ|低温|霜|着氷|着雪/)
+	warninghtml = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/warn/f_#{$warnlocal}.html"))
+	if warninghtml.css('table').select{|t| t['class'] == "WarnJikeiTable"}.length > 0
+		warningtoday,warningtomorrow = warning(warninghtml)
+	else
+		warningtoday = warningtomorrow = nil
+	end
 else
 	warningtoday = warningtomorrow = nil
 end
 ###
 
-darksky = JSON.parse(URI.open("https://api.darksky.net/forecast/#{$darkskyapi}/#{$latlon}?units=si").read)
+# darksky = JSON.parse(URI.open("https://api.darksky.net/forecast/#{$darkskyapi}/#{$latlon}?units=si").read)
+#
+# temp = darksky['currently']['temperature'].to_f.round(1)
+# apptemp = darksky['currently']['apparentTemperature'].to_f.round(1)
+# dewpoint = darksky['currently']['dewPoint'].to_f.round(1)
+# humidity = (darksky['currently']['humidity'].to_f * 100).round(0) # %
+# pressure = darksky['currently']['pressure'] # hectopascal
+# windspeed = darksky['currently']['windSpeed'].to_f.round(1) # m/s
+# gust = darksky['currently']['windGust'].to_f.round(1) # m/s
+# winddir = darksky['currently']['windBearing'].to_i # deg
+# uv = darksky['currently']['uvIndex']
+# precip = darksky['currently']['precipIntensity'].to_f.round(1) # mm/h
+# precipprob = darksky['currently']['precipProbability'].to_f.round(1)
+# clouds = (darksky['currently']['cloudCover'] * 100).round(0) # %
+# visibility = darksky['currently']['visibility'].to_f.round(0) # km
+# icon = darkskyicon(darksky['currently']['icon'])
 
-temp = darksky['currently']['temperature'].to_f.round(1)
-apptemp = darksky['currently']['apparentTemperature'].to_f.round(1)
-dewpoint = darksky['currently']['dewPoint'].to_f.round(1)
-humidity = (darksky['currently']['humidity'].to_f * 100).round(0) # %
-pressure = darksky['currently']['pressure'] # hectopascal
-windspeed = darksky['currently']['windSpeed'].to_f.round(1) # m/s
-gust = darksky['currently']['windGust'].to_f.round(1) # m/s
-winddir = darksky['currently']['windBearing'].to_i # deg
-uv = darksky['currently']['uvIndex']
-precip = darksky['currently']['precipIntensity'].to_f.round(1) # mm/h
-precipprob = darksky['currently']['precipProbability'].to_f.round(1)
-clouds = (darksky['currently']['cloudCover'] * 100).round(0) # %
-visibility = darksky['currently']['visibility'].to_f.round(0) # km
-icon = darksky['currently']['icon']
+# openweather =  JSON.parse(URI.open("https://api.openweathermap.org/data/2.5/weather?id=#{$location}&units=metric&lang=ja&appid=#{$openweatherapi}").read)
+#
+# temp = openweather['main']['temp'].to_f.round(1)
+# apptemp = openweather['main']['feels_like'].to_f.round(1)
+# # dewpoint =
+# humidity = (openweather['main']['humidity'].to_f * 100).round(0) # %
+# pressure = openweather['main']['pressure'] # hectopascal
+# windspeed = openweather['wind']['speed'].to_f.round(1) # m/s
+# # gust = openweather['wind']['gust'].to_f.round(1) # m/s
+# winddir = openweather['wind']['deg'].to_i # deg
+# # uv =
+# precip = openweather['rain']['rain.1h'].to_f.round(1) # mm last hour
+# precip = openweather['snow']['snow.1h'].to_f.round(1) # mm last hour
+# # precipprob =
+# clouds = (openweather['clouds']['all']).round(0) # %
+# visibility = openweather['visibility'].to_f.round(0) # km
+# icon = openweather['weather']['main']
+# # TODO
+# # icon, missing token
+
+visualcrossing = JSON.parse(URI.open("https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/#{$latlon}?unitGroup=metric&key=#{$visualcrossingapi}&include=alerts%2Ccurrent").read)
+
+temp = visualcrossing['currentConditions']['temp'].to_f.round(1)
+apptemp = visualcrossing['currentConditions']['feelslike'].to_f.round(1)
+dewpoint = visualcrossing['currentConditions']['dew'].to_f.round(1)
+humidity = visualcrossing['currentConditions']['humidity'].to_f.round(0) # %
+pressure = visualcrossing['currentConditions']['pressure'] # hectopascal
+windspeed = visualcrossing['currentConditions']['windspeed'].to_f.round(1) # m/s
+gust = visualcrossing['currentConditions']['windgust'].to_f.round(1) # m/s
+winddir = visualcrossing['currentConditions']['winddir'].to_i # deg
+if gust.nil?
+	wind = "#{windspeed} m/s #{winddirconv(winddir)}"
+else
+	wind = "#{windspeed} m/s (#{gust} m/s) #{winddirconv(winddir)}"
+end
+uv = nil
+precip = visualcrossing['currentConditions']['precip'].to_f.round(1) # mm/h
+precipprob = visualcrossing['currentConditions']['precipprob'].to_f.round(1)
+# snow snowdepth preciptype
+unless visualcrossing['currentConditions']['cloudcover'].nil?
+	cloudcover = visualcrossing['currentConditions']['cloudcover'].round(0) # %
+else
+	cloudcover = 0
+end
+clouds = "#{cloudcover}%"
+visibility = visualcrossing['currentConditions']['visibility'].to_f.round(0) # km
+icon = darkskyicon(visualcrossing['currentConditions']['icon'])
+# TODO ['alerts']
+# if null = 0
+# 2021/02/02 wind, pressure, precip null
+
+# climacell = JSON.parse(URI.open("https://data.climacell.co/v4/timelines?location=#{$latlon}&timesteps=1m&timezone=Asia/Tokyo&fields=temperature,temperatureApparent,dewPoint,humidity,windSpeed,windDirection,windGust,pressureSurfaceLevel,precipitationIntensity,precipitationProbability,precipitationType,visibility,cloudCover,cloudBase,cloudCeiling,weatherCode,epaIndex,epaPrimaryPollutant,epaHealthConcern", 'content-type' => 'application/json', 'apikey' => $climacellapi).read)
+#
+# cccurrent = climacell['data']['timelines'][0]['intervals'][0]['values']
+#
+# temp = cccurrent['temperature'].to_f.round(1)
+# apptemp = cccurrent['temperatureApparent'].to_f.round(1)
+# dewpoint = cccurrent['dewPoint'].to_f.round(1)
+# humidity = cccurrent['humidity'].to_f.round(0) # %
+# pressure = cccurrent['pressureSurfaceLevel'] # hectopascal
+# windspeed = cccurrent['windSpeed'].to_f.round(1) # m/s
+# gust = cccurrent['windGust'].to_f.round(1) # m/s
+# winddir = cccurrent['windDirection'].to_i # deg
+# wind = "#{windspeed} m/s (#{gust} m/s) #{winddirconv(winddir)}"
+# # uv = cccurrent['uvIndex']
+# precip = cccurrent['precipitationIntensity'].to_f.round(1) # mm/h
+# precipprob = cccurrent['precipitationProbability'].to_f.round(1)
+# preciptype = cccurrent['precipitationType'].to_i
+# # 0: N/A, 1: Rain, 2: Snow, 3: Freezing Rain, 4: Ice Pellets
+# cloudcover = (cccurrent['cloudCover']).round(0) # %
+# cloudbase = cccurrent['cloudBase'] # km
+# cloudceiling = cccurrent['cloudCeiling'] # km
+# clouds = "#{cloudcover}% (#{cloudbase}→#{cloudceiling} km)"
+# visibility = cccurrent['visibility'].to_f.round(0) # km
+# cccode = cccurrent['weatherCode'].to_i
+# icon = climacellicon(cccode)
+# epaindex = cccurrent['epaIndex'].to_i
+# epapol = cccurrent['epaPrimaryPollutant'].to_i
+# # 0: PM2.5, 1: PM10, 2: O3, 3: NO2, 4: CO, 5: SO2
+# epaconcern = cccurrent['epaHealthConcern'].to_i
+# # 0: Good (0-50), 1: Moderate (51-100), 2: Unhealthy for Sensitive Groups (101-150)
+# # 3: Unhealthy (151-200), 4: Very Unhealthy (201-300), 5: Hazardous (>301)
+
+jma = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/amedas_h/today-#{$amedas}.html"))
+
+temp = windspeed = humidity = pressure = snow = 0
+winddir = ''
+
+current = jma.css('td').select{|text| text['class'] == "block middle"}[$dh*8-8..$dh*8-1]
+
+temp = current[0].text.to_f
+winddir = current[2].text.to_s
+windspeed = current[3].text.to_f
+wind = "#{windspeed} m/s #{winddir}"
+humidity = current[6].text.to_f
+pressure = current[7].text.to_f
+snow = current[5].text.to_f
+
+dewpoint = (temp - (100 - humidity)/5).round(1)
+apptemp = (temp + 0.33 * (6.105 * humidity/100 * Math::E**((17.27*temp)/(237.7+temp))) - 0.7 * windspeed - 4).round(1)
+# http://www.bom.gov.au/info/thermal_stress/#atapproximation
 
 ######
 
-puts "#{darkskyicon(icon)} #{temp}°"
+puts "#{icon} #{temp}°"
 puts "---"
 puts "#{$place} | color=lightslategray"
 puts "---"
 puts "温  #{temp}° (#{apptemp}°) | color=#{$textcolor}"
 puts "湿  #{humidity}% (#{dewpoint}°) | color=#{$textcolor}"
-puts "圧  #{pressure} hPa | color=#{$textcolor}"
-puts "風  #{windspeed} m/s (#{gust} m/s) #{winddirconv(winddir)} | color=#{$textcolor}"
-puts "雲  #{clouds}% | color=#{$textcolor}"
-puts "雨  #{precip} mm/h (#{precipprob} mm/h) #{rainfall if rainfall > 0} #{'mm' if rainfall > 0} | color=#{$textcolor}"
-puts "視  #{visibility} km | color=#{$textcolor}"
-puts "紫  #{uv} | color=#{$textcolor}"
+puts "圧  #{pressure} hPa | color=#{$textcolor}" unless pressure.nil?
+puts "風  #{wind} | color=#{$textcolor}"
+puts "雨  #{precip} mm/h (#{precipprob} mm/h) #{rainfall if rainfall > 0} #{'mm' if rainfall > 0} | color=#{$textcolor}" if precip > 0 or precipprob > 0
+puts "雲  #{clouds} | color=#{$textcolor}"
+puts "視  #{visibility} km | color=#{$textcolor}" unless visibility.nil?
+puts "紫  #{uv} | color=#{$textcolor}" unless uv.nil?
 
 # image forecast icon
 # puts "---"
@@ -1287,7 +1562,7 @@ puts "紫  #{uv} | color=#{$textcolor}"
 # puts "#{yohorain[4]} #{yohorain[5]} #{yohorain[6]} #{yohorain[7]} | color=#{$textcolor} | #{forecasticon(yohoicon[1])}"
 # puts "#{yohodate[2]} | color=#{$textcolor}"
 
-if weekdate[0].include? $today
+if weekdate[0].include? $dw
 	w = 2
 else
 	w = 1
@@ -1296,7 +1571,7 @@ end
 puts "---"
 
 # today
-if warningtoday != []
+if not warningtoday.nil? and warningtoday != []
 	if warningtoday.any? {|line| line.match("警報")}
 		puts "#{yohodate[0]} | color=#{$wrncolor}"
 	else
@@ -1319,18 +1594,18 @@ else
 	end
 end
 
-if $t.hour >= 18
+if $dt >= $sunset
 	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[0],yohotext[0],true).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[0],yohotext[0],true)))}#{adjustspacing(forecastdetailsicon(yohoicon[0],yohotext[0],true),1)}\033[34m#{" ".rjust(4)}\033[31m#{" ".rjust(5)}   \033[#{$rainansi}m#{yohorain[0].rjust(3)} #{yohorain[1].rjust(3)} #{yohorain[2].rjust(3)} #{yohorain[3].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
 else
 	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[0],yohotext[0],true).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[0],yohotext[0],true)))}#{adjustspacing(forecastdetailsicon(yohoicon[0],yohotext[0],true),1)}\033[34m#{yohotemp[0].rjust(4)}\033[31m#{yohotemp[1].rjust(5)}   \033[#{$rainansi}m#{yohorain[0].rjust(3)} #{yohorain[1].rjust(3)} #{yohorain[2].rjust(3)} #{yohorain[3].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
 end
 
 # tomorrow
-if warningtomorrow != []
+if not warningtomorrow.nil? and warningtomorrow != []
 	if warningtomorrow.any? {|line| line.match("警報")}
-		puts "#{yohodate[0]} | color=#{$wrncolor}"
+		puts "#{yohodate[1]} | color=#{$wrncolor}"
 	else
-		puts "#{yohodate[0]} | color=#{$advcolor}"
+		puts "#{yohodate[1]} | color=#{$advcolor}"
 	end
 	formatyoho(yohotext[1]).each_line do |line|
 		puts "--#{line.strip} | color=#{$textcolor} ansi=true"
@@ -1348,7 +1623,7 @@ else
 		puts "--#{line.strip} | color=#{$textcolor} ansi=true"
 	end
 end
-if $t.hour >= 18
+if $dt >= $sunset
 	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[1],yohotext[1],false).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[1],yohotext[1],false)))}#{adjustspacing(forecastdetailsicon(yohoicon[1],yohotext[1],true),1)}\033[34m#{yohotemp[0].rjust(4)}\033[31m#{yohotemp[1].rjust(5)}   \033[#{$rainansi}m#{yohorain[4].rjust(3)} #{yohorain[5].rjust(3)} #{yohorain[6].rjust(3)} #{yohorain[7].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
 else
 	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[1],yohotext[1],false).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[1],yohotext[1],false)))}#{adjustspacing(forecastdetailsicon(yohoicon[1],yohotext[1],true),1)}\033[34m#{yohotemp[2].rjust(4)}\033[31m#{yohotemp[3].rjust(5)}   \033[#{$rainansi}m#{yohorain[4].rjust(3)} #{yohorain[5].rjust(3)} #{yohorain[6].rjust(3)} #{yohorain[7].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
@@ -1374,16 +1649,21 @@ puts "レーダー | ansi=false color=#{$textcolor}"
 puts "--#{r64}"
 puts "衛星 | color=#{$textcolor}"
 puts "--#{s64}"
-if $dt.month > 7 and $dt.month < 11
-	puts "台風情報 | ansi=false color=#{$textcolor}"
-	typhoonout = typhooninfo
+# if $dy > 170 and $dy < 320
+	typhoonhtml = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/typh/"))
+	typhoonout = typhooninfo(typhoonhtml)
 	if typhoonout.match?(/\d/)
+		puts "台風情報 | ansi=false color=#{$textcolor}"
 		puts "--#{typhoonimg}"
-		puts typhooninfo
+		puts typhoonout
 	end
-end
+# end
 puts "---"
 
 puts "---"
 puts "更新 | refresh=true ansi=false color=green"
 puts "気象庁…|href=http://www.jma.go.jp/jp/yoho/#{$area}.html ansi=false color=lightslategray"
+
+# TODO
+# form image
+# https://github.com/matryer/bitbar/issues/425
