@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 # <bitbar.title>Japan Weather</bitbar.title>
-# <bitbar.version>0.5</bitbar.version>
+# <bitbar.version>0.6</bitbar.version>
 # <bitbar.author.github>tsurezuregusa</bitbar.author.github>
 # <bitbar.desc>Display local weather in Japan</bitbar.desc>
 # <bitbar.dependencies>ruby >= 2.4, nokogiri (gem), activesupport (gem), faraday (gem), rmagick (gem), darksky-weather</bitbar.dependencies>
@@ -18,95 +18,26 @@ require 'active_support/core_ext/numeric'
 require 'nokogiri'
 require 'rmagick'
 
-$darkskyapi = 'xxx'
+$darkskyapi = 'x'
 $latlon = '35.6895,139.6917'
 $place = '東京'
 
-# $openweatherapi = 'xxx'
+# $openweatherapi = 'x'
 $openweatherloc = '1850147'
-$visualcrossingapi = 'xxx'
-$climacellapi = 'xxx'
+$visualcrossingapi = 'x'
+$climacellapi = 'x'
 
-$area = '319'
-$subarea = 0
-$weeksub = 0
-
-# 301 Hokkaido: Souya
-# 302 Hokkaido: 0 Kamikawa, 1 Rumoi
-# 303 Hokkaido: 0 Abashiri, 1 Kitami, 2 Monbetsu
-# 304 Hokkaido: 0 Kushiro, 1 Nemuro, 2 Tokachi
-# 305 Hokkaido: 0 Iburi, 1 Hidaka
-# 306 Hokkaido: 0 Ishikari, 1 Sorachi, 2 Shiribeshi
-# 307 Hokkaido: 0 Oshima, 1 Hiyama
-# 308 Aomori
-# 309 Akita
-# 310 Iwate
-# 311 Yamagata
-# 312 Miyagi
-# 313 Fukushima
-# 316 Tochigi
-# 315 Gunma
-# 317 Saitama
-# 314 Ibaraki
-# 318 Chiba
-# 319 Tokyo: 0 Tokyo, 1 Izu Oshima, 2 Izu Hachijojima, 3 Ogasawara
-# 320 Kanagawa
-# 322 Nagano
-# 321 Yamanashi
-# 327 Shizuoka
-# 328 Gifu
-# 329 Aichi
-# 330 Mie
-# 323 Nigata
-# 324 Toyama
-# 325 Ishikawa
-# 326 Fukui
-# 334 Shiga
-# 333 Kyoto
-# 335 Nara
-# 331 Osaka
-# 332 Hyougo
-# 336 Wakayama
-# 339 Tottori
-# 337 Shimane
-# 340 Okayama
-# 338 Hiroshima
-# 341 Kagawa
-# 343 Tokushima
-# 342 Ehime
-# 344 Kochi
-# 345 Yamaguchi
-# 346 Fukuoka
-# 350 Oita
-# 347 Saga
-# 349 Kumamoto
-# 348 Nagasaki
-# 351 Miyazaki
-# 352 Kagoshima
-# 353 Okinawa
-# 354 Okinawa: Daito
-# 355 Okinawa: Miyako
-# 356 Okinawa: Yaeyama
-
-$region = '206'
-# 206 Kanto
-
-$local = '44126'
+$pref = '130000' # 東京都
+$subarea = '1311300' # 渋谷区
+$area = '130010'
+$quakearea = '1310100' # 千代田区
 # http://www.jma.go.jp/jp/amedas/000.html
 $amedas = '44132'
-
-$satfreq = 'gms150jp'
-# 'gms' <- 10m
-# 'gms150jp' <- 2.5m
-
-$sattype = 'colorenhanced'
-# infrared, visible, colorenhanced, watervapor
-# colorenhanced Feb-April night unavailable
+# http://www.jma.go.jp/jp/warn/
+$local = '1311300'
 
 $naoopt = 13
 
-$warnlocal = '1311300'
-# http://www.jma.go.jp/jp/warn/
 
 ######
 
@@ -124,13 +55,13 @@ $dt = Time.now
 $dymd = $dt.strftime("%Y%m%d")
 $dy = $dt.strftime("%j").to_i
 $dw = Time.now.strftime("%-d")
+$d0 = Time.parse("#{$dymd} 00:00:00 +0900")
+$d24 = $d0 + 24.hours
+$d48 = $d0 + 48.hours
+$dtame = "#{($dt-20.minutes).floor(10.minutes).strftime('%Y%m%d')}_#{($dt-20.minutes).floor(3.hours).strftime('%H')}"
 $dh = ($dt-6.minutes).strftime("%H").to_i
-$tr = $dt.floor(5.minutes).strftime("%H%M")
-if $satfreq == 'gms150jp'
-	$ts = ($dt-6.minutes).floor(150.seconds).strftime("%H%M%S")
-else
-	$ts = ($dt-8.minutes).floor(10.minutes).strftime("%H%M")
-end
+$dtr = $dt.utc.floor(5.minutes).strftime("%Y%m%d%H%M")
+$dts = ($dt.utc-8.minutes).floor(10.minutes).strftime("%Y%m%d%H%M")
 
 begin
 	$koyomi = Nokogiri::HTML(URI.open("http://eco.mtk.nao.ac.jp/cgi-bin/koyomi/sunmoon.cgi"))
@@ -209,401 +140,557 @@ FINECLOUD = '🌤'
 CLOUDFINE = '⛅️'
 MOSTCLOUD = '🌥'
 LIGHTNING = '⚡️'
+LIGHTNINGRAIN = '⛈'
 WIND = '💨'
 ICE = '🧊'
+UNKNOWN = '❓'
 
 ICONLENGTH = 7.5
 
-$yoho = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/yoho/#{$area}.html"))
-$week = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/week/#{$area}.html"))
+WEEK = {
+	"1" => "月",
+	"2" => "火",
+	"3" => "水",
+	"4" => "木",
+	"5" => "金",
+	"6" => "土",
+	"7" => "日"
+}
 
-## yoho
+WEATHERCODE = {
+	100 => "晴",
+	101 => "晴時々曇",
+	102 => "晴一時雨",
+	103 => "晴時々雨",
+	104 => "晴一時雪",
+	105 => "晴時々雪",
+	106 => "晴一時雨か雪",
+	107 => "晴時々雨か雪",
+	108 => "晴一時雨か雷雨",
+	110 => "晴後時々曇",
+	111 => "晴後曇",
+	112 => "晴後一時雨",
+	113 => "晴後時々雨",
+	114 => "晴後雨",
+	115 => "晴後一時雪",
+	116 => "晴後時々雪",
+	117 => "晴後雪",
+	118 => "晴後雨か雪",
+	119 => "晴後雨か雷雨",
+	120 => "晴朝夕一時雨",
+	121 => "晴朝の内一時雨",
+	122 => "晴夕方一時雨",
+	123 => "晴山沿い雷雨",
+	124 => "晴山沿い雪",
+	125 => "晴午後は雷雨",
+	126 => "晴昼頃から雨",
+	127 => "晴夕方から雨",
+	128 => "晴夜は雨",
+	130 => "朝の内霧後晴",
+	131 => "晴明け方霧",
+	132 => "晴朝夕曇",
+	140 => "晴時々雨で雷を伴う",
+	160 => "晴一時雪か雨",
+	170 => "晴時々雪か雨",
+	181 => "晴後雪か雨",
+	200 => "曇",
+	201 => "曇時々晴",
+	202 => "曇一時雨",
+	203 => "曇時々雨",
+	204 => "曇一時雪",
+	205 => "曇時々雪",
+	206 => "曇一時雨か雪",
+	207 => "曇時々雨か雪",
+	208 => "曇一時雨か雷雨",
+	209 => "霧",
+	210 => "曇後時々晴",
+	211 => "曇後晴",
+	212 => "曇後一時雨",
+	213 => "曇後時々雨",
+	214 => "曇後雨",
+	215 => "曇後一時雪",
+	216 => "曇後時々雪",
+	217 => "曇後雪",
+	218 => "曇後雨か雪",
+	219 => "曇後雨か雷雨",
+	220 => "曇朝夕一時雨",
+	221 => "曇朝の内一時雨",
+	222 => "曇夕方一時雨",
+	223 => "曇日中時々晴",
+	224 => "曇昼頃から雨",
+	225 => "曇夕方から雨",
+	226 => "曇夜は雨",
+	228 => "曇昼頃から雪",
+	229 => "曇夕方から雪",
+	230 => "曇夜は雪",
+	231 => "曇海上海岸は霧か霧雨",
+	240 => "曇時々雨で雷を伴う",
+	250 => "曇時々雪で雷を伴う",
+	260 => "曇一時雪か雨",
+	270 => "曇時々雪か雨",
+	281 => "曇後雪か雨",
+	300 => "雨",
+	301 => "雨時々晴",
+	302 => "雨時々止む",
+	303 => "雨時々雪",
+	304 => "雨か雪",
+	306 => "大雨",
+	308 => "雨で暴風を伴う",
+	309 => "雨一時雪",
+	311 => "雨後晴",
+	313 => "雨後曇",
+	314 => "雨後時々雪",
+	315 => "雨後雪",
+	316 => "雨か雪後晴",
+	317 => "雨か雪後曇",
+	320 => "朝の内雨後晴",
+	321 => "朝の内雨後曇",
+	322 => "雨朝晩一時雪",
+	323 => "雨昼頃から晴",
+	324 => "雨夕方から晴",
+	325 => "雨夜は晴",
+	326 => "雨夕方から雪",
+	327 => "雨夜は雪",
+	328 => "雨一時強く降る",
+	329 => "雨一時霙",
+	340 => "雪か雨",
+	350 => "雨で雷を伴う",
+	361 => "雪か雨後晴",
+	371 => "雪か雨後曇",
+	400 => "雪",
+	401 => "雪時々晴",
+	402 => "雪時々止む",
+	403 => "雪時々雨",
+	405 => "大雪",
+	406 => "風雪強い",
+	407 => "暴風雪",
+	409 => "雪一時雨",
+	411 => "雪後晴",
+	413 => "雪後曇",
+	414 => "雪後雨",
+	420 => "朝の内雪後晴",
+	421 => "朝の内雪後曇",
+	422 => "雪昼頃から雨",
+	423 => "雪夕方から雨",
+	425 => "雪一時強く降る",
+	426 => "雪後霙",
+	427 => "雪一時霙",
+	450 => "雪で雷を伴う"
+}
 
-# city
-# puts yoho.css('td').select{|text| text['class'] == "city"}[i]
-# 0,2,4,6
+WARNINGCODE = {
+	"02" => {:name => "暴風雪", :type => "警報"},
+	"03" => {:name => "大雨", :type => "警報"},
+	"04" => {:name => "洪水", :type => "警報"},
+	"05" => {:name => "暴風", :type => "警報"},
+	"06" => {:name => "大雪", :type => "警報"},
+	"07" => {:name => "波浪", :type => "警報"},
+	"08" => {:name => "高潮", :type => "警報"},
+	"10" => {:name => "大雨", :type => "注意報"},
+	"12" => {:name => "大雪", :type => "注意報"},
+	"13" => {:name => "風雪", :type => "注意報"},
+	"14" => {:name => "雷", :type => "注意報"},
+	"15" => {:name => "強風", :type => "注意報"},
+	"16" => {:name => "波浪", :type => "注意報"},
+	"17" => {:name => "融雪", :type => "注意報"},
+	"18" => {:name => "洪水", :type => "注意報"},
+	"19" => {:name => "高潮", :type => "注意報"},
+	"20" => {:name => "濃霧", :type => "注意報"},
+	"21" => {:name => "乾燥", :type => "注意報"},
+	"22" => {:name => "雪崩", :type => "注意報"},
+	"23" => {:name => "低温", :type => "注意報"},
+	"24" => {:name => "霜", :type => "注意報"},
+	"25" => {:name => "着氷", :type => "注意報"},
+	"26" => {:name => "着雪", :type => "注意報"},
+	"32" => {:name => "暴風雪", :type => "特別警報"},
+	"33" => {:name => "大雨", :type => "特別警報"},
+	"35" => {:name => "暴風", :type => "特別警報"},
+	"36" => {:name => "大雪", :type => "特別警報"},
+	"37" => {:name => "波浪", :type => "特別警報"},
+	"38" => {:name => "高潮", :type => "特別警報"}
+}
 
-def city
-	case $subarea
-	when 0
-		$yoho.css('td').select{|text| text['class'] == "city"}[0]
-	when 1
-		$yoho.css('td').select{|text| text['class'] == "city"}[2]
-	when 2
-		$yoho.css('td').select{|text| text['class'] == "city"}[4]
-	when 3
-		$yoho.css('td').select{|text| text['class'] == "city"}[6]
+$forecast = JSON.parse(URI.open("https://www.jma.go.jp/bosai/forecast/data/forecast/#{$pref}.json").read)
+
+def forecastdays
+	fcarea = $forecast.first['timeSeries'][0]['areas'].select {|x| x['area']['code'] == $area }.first
+	fctime = $forecast.first['timeSeries'][0]['timeDefines']
+	
+	tmarea = $forecast.first['timeSeries'][2]['areas'].select {|x| x['area']['code'] == $amedas }.first['temps']
+	tmtime = $forecast.first['timeSeries'][2]['timeDefines']
+	
+	pparea = $forecast.first['timeSeries'][1]['areas'].select {|x| x['area']['code'] == $area }.first['pops']
+	pptime = $forecast.first['timeSeries'][1]['timeDefines']
+	
+	temp = [[],[],[]]
+	pop = [[],[],[]]
+	
+	tmtime.each_with_index do |t,i|
+		if Time.parse(t) - Time.parse("#{$dymd}T00:00:00+09:00") < 24.hours
+			temp[0].push(tmarea[i])
+		elsif Time.parse(t) - Time.parse("#{$dymd}T00:00:00+09:00") >= 24.hours and Time.parse(t) - Time.parse("#{$dymd}T00:00:00+09:00") <= 48.hours
+			temp[1].push(tmarea[i])
+		elsif Time.parse(t) - Time.parse("#{$dymd}T00:00:00+09:00") > 48.hours
+			temp[2].push(tmarea[i])
+		end
 	end
-end
-
-# date
-# puts yoho.css('th').select{|text| text['class'] == "weather"}[i].text
-# today
-# 0,3,6,9
-# tomorrow
-# 1,4,7,10
-# aftertom
-# 2,5,8,11
-
-def yohodate
-	[$yoho.css('th').select{|text| text['class'] == "weather"}[0].text.strip, $yoho.css('th').select{|text| text['class'] == "weather"}[1].text.strip, $yoho.css('th').select{|text| text['class'] == "weather"}[2].text.strip]
-end
-
-# forecast icon
-# puts yoho.css('img').select{|text| text['align'] == "middle"}[i]['title']
-# today
-# 0,3,6,9
-# tomorrow
-# 1,4,7,10
-# aftertom
-# 2,5,8,11
-
-def yohoicon
-	case $subarea
-	when 0
-		[$yoho.css('img').select{|text| text['align'] == "middle"}[0]['title'], $yoho.css('img').select{|text| text['align'] == "middle"}[1]['title'], $yoho.css('img').select{|text| text['align'] == "middle"}[2]['title']]
-	when 1
-		[$yoho.css('img').select{|text| text['align'] == "middle"}[3]['title'], $yoho.css('img').select{|text| text['align'] == "middle"}[4]['title'], $yoho.css('img').select{|text| text['align'] == "middle"}[5]['title']]
-	when 2
-		[$yoho.css('img').select{|text| text['align'] == "middle"}[6]['title'], $yoho.css('img').select{|text| text['align'] == "middle"}[7]['title'], $yoho.css('img').select{|text| text['align'] == "middle"}[8]['title']]
-	when 3
-		[$yoho.css('img').select{|text| text['align'] == "middle"}[9]['title'], $yoho.css('img').select{|text| text['align'] == "middle"}[10]['title'], $yoho.css('img').select{|text| text['align'] == "middle"}[11]['title']]
+	
+	pptime.each_with_index do |t,i|
+		if Time.parse(t) - Time.parse("#{$dymd}T00:00:00+09:00") < 24.hours
+			pop[0].push(pparea[i])
+		elsif Time.parse(t) - Time.parse("#{$dymd}T00:00:00+09:00") >= 24.hours and Time.parse(t) - Time.parse("#{$dymd}T00:00:00+09:00") <= 48.hours
+			pop[1].push(pparea[i])
+		elsif Time.parse(t) - Time.parse("#{$dymd}T00:00:00+09:00") > 48.hours
+			pop[2].push(pparea[i])
+		end
 	end
-end
-
-# forecast text
-# puts yoho.css('td').select{|text| text['class'] == "info"}[i]
-# today
-# 0,3,6,9
-# tomorrow
-# 1,4,7,10
-# aftertom
-# 2,5,8,11
-
-def yohotext
-	case $subarea
-	when 0
-		[$yoho.css('td').select{|text| text['class'] == "info"}[0]&.text, $yoho.css('td').select{|text| text['class'] == "info"}[1]&.text, $yoho.css('td').select{|text| text['class'] == "info"}[2]&.text]
-	when 1
-		[$yoho.css('td').select{|text| text['class'] == "info"}[3]&.text, $yoho.css('td').select{|text| text['class'] == "info"}[4]&.text, $yoho.css('td').select{|text| text['class'] == "info"}[5]&.text]
-	when 2
-		[$yoho.css('td').select{|text| text['class'] == "info"}[6]&.text, $yoho.css('td').select{|text| text['class'] == "info"}[7]&.text, $yoho.css('td').select{|text| text['class'] == "info"}[8]&.text]
-	when 3
-		[$yoho.css('td').select{|text| text['class'] == "info"}[9]&.text, $yoho.css('td').select{|text| text['class'] == "info"}[10]&.text, $yoho.css('td').select{|text| text['class'] == "info"}[11]&.text]
+	out = []
+	for i in 0..fctime.length-1
+		out.push({
+			:date => Time.parse(fctime[i]),
+			:weather => fcarea['weatherCodes'][i].to_i,
+			:wind => fcarea['winds'][i],
+			:wave => fcarea['waves'][i],
+			:temp => temp[i],
+			:pop => pop[i]
+		})
 	end
+	return out
 end
 
-# temp
-# puts yoho.css('td').select{|text| text['class'] == "min"}[i] # blank 度
-# puts yoho.css('td').select{|text| text['class'] == "max"}[i] # trailing endline 度
-# today
-# 0,2,4,6
-# tomorrow
-# 1,3,5,7
-
-def yohotemp # today min max, tomorrow min max
-	case $subarea
-	when 0
-		[$yoho.css('td').select{|text| text['class'] == "min"}[0]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "max"}[0]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "min"}[1]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "max"}[1]&.text.strip.gsub(/度/, '°')]
-	when 1
-		[$yoho.css('td').select{|text| text['class'] == "min"}[2]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "max"}[2]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "min"}[3]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "max"}[3]&.text.strip.gsub(/度/, '°')]
-	when 2
-		[$yoho.css('td').select{|text| text['class'] == "min"}[4]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "max"}[4]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "min"}[5]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "max"}[5]&.text.strip.gsub(/度/, '°')]
-	when 3
-		[$yoho.css('td').select{|text| text['class'] == "min"}[6]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "max"}[6]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "min"}[7]&.text.strip.gsub(/度/, '°'), $yoho.css('td').select{|text| text['class'] == "max"}[7]&.text.strip.gsub(/度/, '°')]
+def forecastweek
+	fcarea = $forecast.last['timeSeries'][0]['areas'].select {|x| x['area']['code'] == $area }.first
+	fctime = $forecast.last['timeSeries'][0]['timeDefines']
+	
+	tmarea = $forecast.last['timeSeries'][1]['areas'].select {|x| x['area']['code'] == $amedas }.first
+	tmtime = $forecast.last['timeSeries'][1]['timeDefines']
+	
+	temp = []
+	tmtime.each_with_index do |t,i|
+		temp.push({
+			:min => tmarea['tempsMin'][i],
+			:minup => tmarea['tempsMinUpper'][i],
+			:minlo => tmarea['tempsMinLower'][i],
+			:max => tmarea['tempsMax'][i],
+			:maxup => tmarea['tempsMaxUpper'][i],
+			:maxlo => tmarea['tempsMaxLower'][i]
+		})
 	end
-end
-
-# rain
-# puts yoho.css('td').select{|text| text['align'] == "right"}[i]
-# today
-# 0-6: 0,8,16,24
-# 6-12: 1,9,17,25
-# 12-18: 2,10,18,26
-# 18-24: 3,11,19,27
-# tomorrow
-# 0-6: 4,12,20,28
-# 6-12: 5,13,21,29
-# 12-18: 6,14,22,30
-# 18-24: 7,15,23,31
-
-def yohorain # today 0-6 6-12 12-18 18-24, tomorrow 0-6 6-12 12-18 18-24
-	case $subarea
-	when 0
-		[$yoho.css('td').select{|text| text['align'] == "right"}[0].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[1].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[2].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[3].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[4].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[5].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[6].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[7].text.gsub(/--%/, ' ')]
-	when 1
-		[$yoho.css('td').select{|text| text['align'] == "right"}[8].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[9].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[10].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[11].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[12].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[13].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[14].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[15].text.gsub(/--%/, ' ')]
-	when 2
-		[$yoho.css('td').select{|text| text['align'] == "right"}[16].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[17].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[18].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[19].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[20].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[21].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[22].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[23].text.gsub(/--%/, ' ')]
-	when 3
-		[$yoho.css('td').select{|text| text['align'] == "right"}[24].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[25].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[26].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[27].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[28].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[29].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[30].text.gsub(/--%/, ' '), $yoho.css('td').select{|text| text['align'] == "right"}[31].text.gsub(/--%/, ' ')]
+	out = []
+	for i in 0..fctime.length-1
+		out.push({
+			:date => Time.parse(fctime[i]),
+			:weather => fcarea['weatherCodes'][i].to_i,
+			:temp => temp[i],
+			:pop => fcarea['pops'][i]
+		})
 	end
+	return out
 end
 
-def gaikyo
-	text = $yoho.css('pre').text.gsub(/天気概況.+?$\n/, '')
+def overviewdays
+	json = JSON.parse(URI.open("https://www.jma.go.jp/bosai/forecast/data/overview_forecast/#{$pref}.json").read)
+	
+	text = "#{json['headlineText']}\n\n"
+	text += "#{json['text']}"
 	text.gsub!(/([\p{Hiragana}\p{Katakana}])\s*$\n/, '\1')
-	text.gsub!(/([一-龠々&&[^表]])\s*$\n/, '\1')
-	# text.gsub!(/([一-龠々])\s*$\n/, '\1')
-	text.gsub!(/\n\n\n/, "\n\n")
+	text.gsub!(/^　/, '')
+	text.gsub!(/[＞】）]/, '\0\n')
+	text.gsub!(/[（]/, '\n\0')
 	text.gsub!(/[^線][しりが]、/, '\0\n')
 	text.gsub!(/[^の]ため、/, '\0\n')
 	text.gsub!(/。/, '\0\n')
 	text.gsub!(/\\n/, "\n")
 	text.gsub!(/\n^　+$\n/, "\n")
-	text.gsub!(/\n\n/, "\n")
 	text.gsub!(/\n\s*\n\s*\n/, "\n\n")
+	text = "#{Time.parse(json['reportDatetime']).strftime("%Y年%m月%d日 %H時%M分")}\n\n" + text
 	text = NKF.nkf('-X -w', text).tr('０-９．', '0-9.')
 	return text
 end
 
-def warning(html)
-	times = html.css('td').select{|t| t['class'] == "double_border title_time"}.map {|l| l.text.strip }
-	zero = times.each_index.select {|i| times[i].match?(/^0/)}.last
+def overviewweek
+	json = JSON.parse(URI.open("https://www.jma.go.jp/bosai/forecast/data/overview_week/#{$pref}.json").read)
 	
-	warnings = []
-	table = html.css('table').select{|t| t['class'] == "WarnJikeiTable"}.first
-	temp = ''
-	table.css('tr')[3..-1].each do |l|
-		x = l.css('td').select{|t| t['rowspan'] =~ /\d+/}
-		y = l.css('td').select{|t| t['colspan'] =~ /\d+/}
-		z = l.css('td').select{|t| not (t['colspan'] =~ /\d+/ or t['rowspan'] =~ /\d+/ or t['class'] =~ /\w+/)}
-		
-		if x == [] or x.length == 0
-			x = temp
+	text = "#{json['headTitle']}\n\n"
+	text += "#{json['text']}"
+	date = "#{text.lines.first.strip}　#{Time.parse(json['reportDatetime']).strftime("%Y年%m月%d日 %H時%M分")}"
+	a = [date] + text.lines[1..-1]
+	text = a.join("\n\n")
+	text.gsub!(/([\p{Hiragana}\p{Katakana}])\s*$\n/, '\1')
+	text.gsub!(/^　/, '')
+	text.gsub!(/[＞】）]/, '\0\n')
+	text.gsub!(/[（]/, '\n\0')
+	text.gsub!(/[^線][くしりが]、/, '\0\n')
+	text.gsub!(/[^の]ため、/, '\0\n')
+	text.gsub!(/まで　/, '\0\n\n')
+	text.gsub!(/。/, '\0\n\n')
+	text.gsub!(/\\n/, "\n")
+	text.gsub!(/\n^　+$\n/, "\n")
+	text.gsub!(/\n\s*\n\s*\n/, "\n\n")
+	text = NKF.nkf('-X -w', text).tr('０-９．', '0-9.')
+	return text.strip
+end
+
+def minmax(list,st,et)
+	a = list.map {|date,val| val if date >= st and date <= et }.reject(&:blank?)
+	if a.min == a.max
+		return "#{a.min}"
+	else
+		return "#{a.min}〜#{a.max}"
+	end
+end
+
+def windwarn(a)
+	if a.length > 1
+		dir = a.map {|d,s| d}.uniq
+		spd = a.map {|d,s| s}.uniq
+		min = a.map{|d,s|s}.min
+		max = a.map{|d,s|s}.max
+		if dir.length > 1 and spd.length == 1
+			return "#{dir.join('〜')} #{spd.join('')} m/s"
+		elsif dir.length > 1 and spd.length > 2
+			return "#{dir.join('〜')} #{min}〜#{max} m/s"
+		elsif dir.length > 1 and spd.length > 1
+			return "#{dir.join('〜')} #{spd.join('〜')} m/s"
 		else
-			temp = x.first
-			x = x.first
+			return "#{dir.join('')} #{min}〜#{max} m/s"
 		end
-		str = ''
-		y.each {|z| str += z.text.strip.gsub(/（.+）/,'').gsub(/\(|\)/,'') + ' '}
-		if not z.first.nil? and z.first.text.match(/[一-龠々]/)
-			str += z.first.text + ' '
-		end
-		
-		list = l.css('td').select{|t| (t['class'] =~ /jikei_/ and not t['class'] =~ /type/ and not t['class'] =~ /rmks/) or not t['class'] =~ /jikei_/ and t.text != "陸上" and t.text != "海上" and t['colspan'].nil? and t['rowspan'].nil?}
-		remarks = l.css('td').select{|t| t['class'] =~ /jikei_/ and t['class'] =~ /rmks/}.map {|l| l.text.strip}
-		warnings.push(:type => x.text.strip, :detail => str.strip, :times => list, :remarks => remarks.join(' '))
+	else
+		return "#{a[0][0]} #{a[0][1]} m/s"
+	end
+end
+
+def warningtimes(t,l,s,i)
+	v = l.select {|x| x['type'] == s }.map {|x| x['localAreas'][i]['values'] }
+	return Hash[t.zip(v.flatten)]
+end
+
+def warning
+	json = JSON.parse(URI.open("https://www.jma.go.jp/bosai/warning/data/warning/#{$pref}.json").read)
+	
+	warnings = json['areaTypes'].last['areas'].select {|x| x['warnings'] if x['code'] == $local and not x['warnings'].any?{|y| y['status'] == "解除"}}.map {|x| x['warnings']}.flatten
+	
+	times = []
+	json['timeSeries'].each do |x|
+		h = {
+			:times => x['timeDefines'],
+			:warnings => x['areaTypes'].last['areas'].select {|y| y['code'] == $local}.map {|x| x['warnings']}.flatten
+		}
+		times.push(h)
 	end
 	
-	if warnings.length > 0
-		hash = []
-		warnings.each do |w|
-			warning = []
-			i = 0
-			w[:times].each do |t|
-				# puts t['class'].to_s
-				if t.text != '' and not t.text.match?(/[0-9]/)
-					i -= 1
-					tag = nil
-					time = nil
-				elsif t.text != '' and t.text.match?(/[0-9]/)
-					tag = t.text
-					time = times[i]
-				else
-					tag = nil
-					time = times[i]
-				end
-				if t['class'].to_s.sub('jikei_','').split(' ').length > 1
-					warning.push(:class => t['class'].to_s.sub('jikei_','').split(' ').first, :type => t['class'].to_s.sub('jikei_','').split.last, :tag => tag, :time => time)
-				elsif t['class'].nil? and t.text != ""
-					warning.push(:class => :data, :tag => tag, :time => times[i])
-				elsif t['class'].to_s.match?("jikei")
-					warning.push(:class => t['class'].to_s.sub('jikei_','').split(' ').first, :tag => tag, :time => time)
-				end
-				i += 1
-			end
-			hash.push(:warning => w[:type], :detail => w[:detail], :remarks => w[:remarks], :times => warning)
-		end
-		# puts hash.pretty_inspect
+	sort = Hash.new{|h,k| h[k] = [] }
+	warnings.each do |x|
+		name = WARNINGCODE[x['code']][:name]
+		time = times.select {|y| y[:warnings].any? {|z| z['code'] == x['code']}}.first
+		warning = time[:warnings].select {|y| y['code'] == x['code']}.first
+		# ['status'] 発表 継続 発表警報・注意報はなし
+		sort[name].push({:time=>time[:times],:warning=>warning}) unless x['status'].match? /なし$/
+	end
+	# puts sort.pretty_inspect
+	listtoday = []
+	listtomorrow = []
+	sort.each do |k,v|
 		today = []
 		tomorrow = []
-		hash.each_with_index do |w,i|
-			str = w[:warning]
-			if w[:detail] != ''
-				str += "　#{w[:detail]}"
-			end
-			types = w[:times].select {|t| t[:class] != "none" and t[:class] != "white" and not t[:time].nil? and not t[:class].nil?}.map {|l| {:class => l[:class],:type => l[:type]} }.uniq
-			types.each do |type|
-				# puts  w[:times].select {|t| t[:class] == type[:class]}
-				first = w[:times].select {|t| t[:class] == type[:class] and t[:type] == type[:type]}.first[:time]
-				last = w[:times].select {|t| t[:class] == type[:class] and t[:type] == type[:type] and not t[:time].nil?}.last[:time]
-				if type[:class] == "wrn"
-					str += "　警報　"
-				elsif type[:class] == "adv"
-					str += "　注意　"
-				end
-				if type[:type] =~ /arw_([EWSN]+)/
-					case $1
-					when "E"
-						str += "東"
-					when "W"
-						str += "西"
-					when "S"
-						str += "南"
-					when "N"
-						str += "北"
-					when "NE"
-						str += "東北"
-					when "SE"
-						str += "東南"
-					when "NW"
-						str += "西北"
-					when "SW"
-						str += "西南"
-					end
-					str.gsub!(/風向風速.?矢印・メートル.?/,'')
-					tags = w[:times].select {|t| t[:class] == type[:class]}.map {|l| l[:tag] }.uniq
-					if tags.length > 1
-						str += "　#{tags.first}〜#{tags.last} m/s　"
-					elsif tags.length > 0
-						str += "　#{tags.first} m/s　"
-					end
-				elsif w[:warning] == "波浪"
-					tags = w[:times].select {|t| t[:class] == type[:class]}.map {|l| l[:tag] }.uniq
-					if tags.length > 1
-						str += "#{tags.first}-#{tags.last} m　"
-					elsif tags.length > 0
-						str += "#{tags.first} m　"
-					end
-				elsif w[:warning] == "高潮"
-					tags = w[:times].select {|t| t[:class] == type[:class]}.map {|l| l[:tag] }.uniq
-					if tags.length > 1
-						str += "#{tags.first}-#{tags.last} m　"
-					elsif tags.length > 0
-						str += "#{tags.first} m　"
-					end
-				elsif w[:detail] == "１時間最大雨量"
-					tags = w[:times].select {|t| t[:class] == type[:class] and not t[:time].nil?}.map {|l| l[:tag] }.uniq.reject(&:empty?)
-					if tags.length > 1
-						str += " #{tags.first}-#{tags.last} mm　"
-					elsif tags.length > 0
-						str += " #{tags.first} mm　"
-					end
-				end
-				if times.index(first) >= zero
-					str += "明日#{first.split('-')[0]}〜#{last.split('-')[1]}時　・"
-				elsif times.rindex(last) >= zero
-					str += "今日#{first.split('-')[0]}時〜明日#{last.split('-')[1]}時　・"
-				else
-					str += "#{first.split('-')[0]}〜#{last.split('-')[1]}時　・"
-				end
-			end
-			str.sub!(/・$/,'')
-			if not w[:remarks].nil? and w[:remarks] != ''
-				str += "（#{NKF.nkf('-X -w', w[:remarks]).tr('０-９．', '0-9.')}）"
-			end
-			if str.match?("明日") and not str.match?("今日")
-				tomorrow.push(str)
+		v.each do |t|
+			times = t[:time].map {|x| Time.parse(x)}
+			
+			if local = t[:warning]['levels'][0]['localAreas'].find_index {|x| x['localAreaName'] == "陸上"}
 			else
-				today.push(str)
+				local = 0
+			end
+			data = t[:warning]['levels'][0]['localAreas']
+			unless data.first['localAreaName'].nil?
+				areas = data.map {|x| "#{x['localAreaName']} "}
+			else
+				areas = [""]
+			end
+			
+			i = data[0]['values'].each_index.select {|y| data[0]['values'][y] != "" and data[0]['values'][y] != "00"}[0]
+			j = data[0]['values'].each_index.select {|y| data[0]['values'][y] != "" and data[0]['values'][y] != "00"}[-1]
+			
+			warning = WARNINGCODE[t[:warning]['code']][:type]
+			
+			if k == "雷" or k == "融雪" or k == "霜" or k == "雪崩" or k == "着氷" or k == "着雪"
+				unless data[0]['additions'].nil?
+					details = " #{data[0]['additions'].join('　')}"
+				else
+					details = ''
+				end
+				if times[i] >= $d24
+					tomorrow.push("#{warning}　#{details}")
+				elsif times[i] < $d24 and times[j] >= $d24
+					today.push("#{warning}　#{details}")
+					tomorrow.push("#{warning}　#{details}")
+				else
+					today.push("#{warning}　#{details}")
+				end
+			elsif k == "乾燥"
+				effhum = warningtimes(times,t[:warning]['properties'],"実効湿度",local)
+				minhum = warningtimes(times,t[:warning]['properties'],"最小湿度",local)
+				if times[i] >= $d24
+					tomorrow.push("#{warning}　実効湿度 #{minmax(effhum,$d24,$d48)}% 最小湿度 #{minmax(minhum,$d24,$d48)}%")
+				elsif times[i] < $d24 and times[j] >= $d24
+					today.push("#{warning}　実効湿度 #{minmax(effhum,$d0,$d24)}%　最小湿度 #{minmax(minhum,$d24,$d48)}%")
+					tomorrow.push("#{warning}　実効湿度 #{minmax(effhum,$d24,$d48)}%  最小湿度 #{minmax(minhum,$d24,$d48)}%")
+				else
+					today.push("#{warning}　実効湿度 #{minmax(effhum,$d0,$d24)}%  最小湿度 #{minmax(minhum,$d0,$d24)}%")
+				end
+			elsif k == "低温"
+				if times[i] >= $d24
+					tomorrow.push("#{warning}")
+				elsif times[i] < $d24 and times[j] >= $d24
+					today.push("#{warning}")
+					tomorrow.push("#{warning}")
+				else
+					today.push("#{warning}")
+				end
+			elsif k == "大雨"
+				if times[i] >= $d24
+					tomorrow.push("#{warning}")
+				elsif times[i] < $d24 and times[j] >= $d24
+					today.push("#{warning}")
+					tomorrow.push("#{warning}")
+				else
+					today.push("#{warning}")
+				end
+			elsif k == "大雪"
+				if times[i] >= $d24
+					tomorrow.push("#{warning}")
+				elsif times[i] < $d24 and times[j] >= $d24
+					today.push("#{warning}")
+					tomorrow.push("#{warning}")
+				else
+					today.push("#{warning}")
+				end
+			elsif k == "強風" or k == "暴風" or k == "風雪" or k == "暴風雪"
+				todayarea = []
+				tomorrowarea = []
+				for area in 0..data.length-1
+					speed = []
+					dir = []
+					t[:warning]['properties'].select {|x| x['type'] == "最大風速" }.each do |x|
+						speed += x['localAreas'][area]['values']
+					end
+					t[:warning]['properties'].select {|x| x['type'] == "風向" }.each do |x|
+						dir += x['localAreas'][area]['windDirections'].map {|y| y['value']}
+					end
+					h = Hash[times.zip(dir.zip(speed))]
+					if times[i] >= $d24
+						a = h.select {|k,v| k >= $d24 and not v.join('').empty? }.map {|k,v| v}.uniq
+						tomorrowarea.push("#{areas[area]}#{windwarn(a)}")
+					elsif times[i] < $d24 and times[j] >= $d24
+						a = h.select {|k,v| k >= $d0 and k <= $d24 and not v.join('').empty? }.map {|k,v| v}.uniq
+						todayarea.push("#{areas[area]}#{windwarn(a)}")
+						b = h.select {|k,v| k >= $d24 and not v.join('').empty? }.map {|k,v| v}.uniq
+						tomorrowarea.push("#{areas[area]}#{windwarn(b)}")
+					else
+						a = h.select {|k,v| k >= $d0 and k <= $d24 and not v.join('').empty? }.map {|k,v| v}.uniq
+						todayarea.push("#{areas[area]}#{windwarn(a)}")
+					end
+				end
+				today.push("#{warning}　#{todayarea.join('　')}") if todayarea.length > 0
+				tomorrow.push("#{warning}　#{tomorrowarea.join('　')}") if tomorrowarea.length > 0
+			elsif k == "波浪"
+				wave = warningtimes(times,t[:warning]['properties'],"波高",0)
+				if times[i] >= $d24
+					tomorrow.push("#{warning}　#{minmax(wave,$d24,$d48)}m")
+				elsif times[i] < $d24 and times[j] >= $d24
+					today.push("#{warning}　#{minmax(wave,$d0,$d24)}m")
+					tomorrow.push("#{warning}　#{minmax(wave,$d24,$d48)}m")
+				else
+					today.push("#{warning}　#{minmax(wave,$d0,$d24)}m")
+				end
+			elsif k == "洪水"
+				if times[i] >= $d24
+					tomorrow.push("#{warning}")
+				elsif times[i] < $d24 and times[j] >= $d24
+					today.push("#{warning}")
+					tomorrow.push("#{warning}")
+				else
+					today.push("#{warning}")
+				end
+			elsif k == "濃霧"
+				if times[i] >= $d24
+					tomorrow.push("#{warning}")
+				elsif times[i] < $d24 and times[j] >= $d24
+					today.push("#{warning}")
+					tomorrow.push("#{warning}")
+				else
+					today.push("#{warning}")
+				end
+			elsif k == "高潮"
+				if times[i] >= $d24
+					tomorrow.push("#{warning}")
+				elsif times[i] < $d24 and times[j] >= $d24
+					today.push("#{warning}")
+					tomorrow.push("#{warning}")
+				else
+					today.push("#{warning}")
+				end
+			end
+			
+			if times[i] >= $d24 and times[j] >= $d48
+				tomorrow[-1] += "　 #{times[i].strftime('%k').strip}〜"
+			elsif times[i] >= $d24
+				tomorrow[-1] += "　 #{times[i].strftime('%k').strip}〜#{(times[j]+3.hours).strftime('%k').strip}時"
+			elsif times[j] >= $d48
+				today[-1] += "　#{times[i].strftime('%k').strip}時〜"
+				tomorrow[-1] += "　今後も"
+			elsif times[j] >= $d24
+				today[-1] += "　#{times[i].strftime('%k').strip}時〜"
+				tomorrow[-1] += "　〜#{(times[j]+3.hours).strftime('%k').strip}時"
+			else
+				today[-1] += "  #{times[i].strftime('%k').strip}〜#{(times[j]+3.hours).strftime('%k').strip}時"
 			end
 		end
-		return today,tomorrow
-	else
-		return nil
+		listtoday.push("#{k}　#{today.join(' ')}") if today.length > 0
+		listtomorrow.push("#{k}　#{tomorrow.join(' ')}") if tomorrow.length > 0
 	end
+	return listtoday,listtomorrow
 end
 
 def typhoonimg
 	begin
-		img = Magick::Image::from_blob(URI.open('http://www.jma.go.jp/jp/typh/images/wide/all-00.png').read).first.crop(0,0,480,335, true)
+		img = Magick::Image::from_blob(URI.open('http://www.jma.go.jp/jp/typh/images/wide/all-00.png').read).first.crop(0,0,480,335,true)
 		return "| refresh=true image=#{Base64.encode64(img.to_blob).gsub(/\n/, '')}"
 	rescue
 		return '❌'
 	end
 end
 
-def typhooninfo(html)
-	info = html.css('div').select{|text| text['class'] == 'typhoonInfo'}
-
-	typhid = html.xpath('//div[@class="typhoonInfo"]/@id')
-
-	typhlist = []
-
-	typhid.each do |typhoon|
-		typhlist.push(html.css('option').select{|text| text['value'] == typhoon.to_s}.first.text.delete('台風'))
+def typhooninfo(list)
+	info = []
+	list.each do |id|
+		data  = JSON.parse(URI.open("https://www.jma.go.jp/bosai/typhoon/data/#{id}/specifications.json").read)
+		analysis = data.select{|x|x['part']['jp']=='実況'}.first
+		name = analysis['category']['jp']
+		if name == "台風"
+			info.push("#{name} 第#{id[-2..-1].to_i}号  #{analysis['location']}  #{analysis['course']}  #{analysis['speed']['km/h']} km/h  #{analysis['pressure']} hPa  #{analysis['maximumWind']['sustained']['m/s']} m/s (#{analysis['maximumWind']['gust']['m/s']} m/s)")
+		else
+			info.push("--#{name} 第#{id[-2..-1].to_i}号  #{analysis['location']}  #{analysis['course']}  #{analysis['speed']['km/h']} km/h  #{analysis['pressure']} hPa | color=#{$textcolor}")
+		end
 	end
-
-	typhinfo = ''
-	i = 0
-	info.each do |typhoon|
-		typhinfo += "--#{typhlist[i]} "
-		typhinfo += "#{typhoon.css('td')[3].text unless typhoon.css('td')[3].text.match?('-')} "
-		typhinfo += "#{typhoon.css('td')[5].text unless typhoon.css('td')[5].text.match?('-')} "
-		typhinfo += "#{typhoon.css('td')[7].text} "
-		typhinfo += " #{typhoon.css('td')[13].text.split('(')[0].insert(-5,' ') unless not typhoon.css('td').text.include?('風速')}  "
-		typhinfo += "#{typhoon.css('td')[15].text.insert(-4,' ').gsub(/\(\d+ kt\)/,'').gsub(/(\d+)(km\/h)/,'\\1 \\2')} "
-		typhinfo += " #{typhoon.css('td')[17].text.split('(')[0].insert(-4,' ')} "
-		typhinfo += "(#{typhoon.css('td')[19].text.split('(')[0].insert(-4,' ') unless not typhoon.css('td').text.include?('風速')})"
-		typhinfo = typhinfo.gsub(/   +/, '  ').gsub(/ っ/,'っ').gsub(/\(\)/,'')
-		typhinfo += " | color=#{$textcolor}\n"
-		i += 1
-	end
-	return typhinfo
+	return info
 end
 
-## week
-
-# date
-# puts page.css('th')[i].text # [\d+曜]
-# tomorrow 1 > 2,3,4,5,6,7
-
-def weekdate
-	[$week.css('th')[1].text.insert(-2, '日（').insert(-1, '）'), $week.css('th')[2].text.insert(-2, '日（').insert(-1, '）'), $week.css('th')[3].text.insert(-2, '日（').insert(-1, '）'), $week.css('th')[4].text.insert(-2, '日（').insert(-1, '）'), $week.css('th')[5].text.insert(-2, '日（').insert(-1, '）'), $week.css('th')[6].text.insert(-2, '日（').insert(-1, '）'), $week.css('th')[7].text.insert(-2, '日（').insert(-1, '）')]
-end
-
-# forecast
-# puts week.css('td').select{|text| text['class'] == "for"}[i].text
-# 0-6,28-34,56-62
-# rain
-# 7-13,35-41,63-69
-# max ranges 17 \n (15～20)
-# 14-20,42-48,70-76
-# min
-# 21-27,49-55,77-83
-
-def weekicon
-	case $weeksub
-	when 0
-		[$week.css('td').select{|text| text['class'] == "for"}[0].text, $week.css('td').select{|text| text['class'] == "for"}[1].text, $week.css('td').select{|text| text['class'] == "for"}[2].text, $week.css('td').select{|text| text['class'] == "for"}[3].text, $week.css('td').select{|text| text['class'] == "for"}[4].text, $week.css('td').select{|text| text['class'] == "for"}[5].text, $week.css('td').select{|text| text['class'] == "for"}[6].text]
-	when 1
-		[$week.css('td').select{|text| text['class'] == "for"}[28].text, $week.css('td').select{|text| text['class'] == "for"}[29].text, $week.css('td').select{|text| text['class'] == "for"}[30].text, $week.css('td').select{|text| text['class'] == "for"}[31].text, $week.css('td').select{|text| text['class'] == "for"}[32].text, $week.css('td').select{|text| text['class'] == "for"}[33].text, $week.css('td').select{|text| text['class'] == "for"}[34].text]
-	when 2
-		[$week.css('td').select{|text| text['class'] == "for"}[56].text, $week.css('td').select{|text| text['class'] == "for"}[57].text, $week.css('td').select{|text| text['class'] == "for"}[58].text, $week.css('td').select{|text| text['class'] == "for"}[59].text, $week.css('td').select{|text| text['class'] == "for"}[60].text, $week.css('td').select{|text| text['class'] == "for"}[61].text, $week.css('td').select{|text| text['class'] == "for"}[62].text]
+def earthquake
+	# json = JSON.parse(URI.open("https://www.jma.go.jp/bosai/quake/data/list.json").read)
+	
+	json = JSON.parse(URI.open("#{Dir.home}/src/bitbar-plugins/jma/quake.json").read)
+	
+	list = json.select do |x|
+		x['int'].any? {|y| y['city'].any? {|z| z['code'] == $quakearea and z['maxi'].to_i > 1} }
 	end
-end
-
-def weekrain
-	case $weeksub
-	when 0
-		[$week.css('td').select{|text| text['class'] == "for"}[7].text, $week.css('td').select{|text| text['class'] == "for"}[8].text, $week.css('td').select{|text| text['class'] == "for"}[9].text, $week.css('td').select{|text| text['class'] == "for"}[10].text, $week.css('td').select{|text| text['class'] == "for"}[11].text, $week.css('td').select{|text| text['class'] == "for"}[12].text, $week.css('td').select{|text| text['class'] == "for"}[13].text]
-	when 1
-		[$week.css('td').select{|text| text['class'] == "for"}[35].text, $week.css('td').select{|text| text['class'] == "for"}[36].text, $week.css('td').select{|text| text['class'] == "for"}[37].text, $week.css('td').select{|text| text['class'] == "for"}[38].text, $week.css('td').select{|text| text['class'] == "for"}[39].text, $week.css('td').select{|text| text['class'] == "for"}[40].text, $week.css('td').select{|text| text['class'] == "for"}[41].text]
-	when 2
-		[$week.css('td').select{|text| text['class'] == "for"}[63].text, $week.css('td').select{|text| text['class'] == "for"}[64].text, $week.css('td').select{|text| text['class'] == "for"}[65].text, $week.css('td').select{|text| text['class'] == "for"}[66].text, $week.css('td').select{|text| text['class'] == "for"}[67].text, $week.css('td').select{|text| text['class'] == "for"}[68].text, $week.css('td').select{|text| text['class'] == "for"}[69].text]
-	end
-end
-
-def weekmax
-	case $weeksub
-	when 0
-		[$week.css('td').select{|text| text['class'] == "for"}[14].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[15].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[16].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[17].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[18].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[19].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[20].text.gsub(/\s+/, ' ')]
-	when 1
-		[$week.css('td').select{|text| text['class'] == "for"}[42].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[43].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[44].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[45].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[46].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[47].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[48].text.gsub(/\s+/, ' ')]
-	when 2
-		[$week.css('td').select{|text| text['class'] == "for"}[70].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[71].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[72].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[73].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[74].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[75].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[76].text.gsub(/\s+/, ' ')]
-	end
-end
-
-def weekmin
-	case $weeksub
-	when 0
-		[$week.css('td').select{|text| text['class'] == "for"}[21].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[22].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[23].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[24].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[25].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[26].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[27].text.gsub(/\s+/, ' ')]
-	when 1
-		[$week.css('td').select{|text| text['class'] == "for"}[49].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[50].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[51].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[52].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[53].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[54].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[55].text.gsub(/\s+/, ' ')]
-	when 2
-		[$week.css('td').select{|text| text['class'] == "for"}[77].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[78].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[79].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[80].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[81].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[82].text.gsub(/\s+/, ' '), $week.css('td').select{|text| text['class'] == "for"}[83].text.gsub(/\s+/, ' ')]
+	if list.length > 0
+		q = list.first
+		mag = q['int'].select {|x| x['city'].any? {|y| y['code'] == $quakearea}}[0]['city'].select {|x| x['code'] == $quakearea}[0]['maxi']
+		dep = (q['acd'].to_i / 5)#.round(-1)
+	
+		return "#{q['mag']} (#{mag})  #{q['anm']} #{dep} km  #{Time.parse(q['at']).strftime('%-m/%-d %H:%M')}"
+	else
+		return nil
 	end
 end
 
@@ -618,14 +705,22 @@ def isnight
 end
 
 def ifdarkmode
-	if `/usr/bin/defaults read -g AppleInterfaceStyleSwitchesAutomatically 2> /dev/null`['1']
-		if $dt < ($sunrise + 1.hours) or $dt > ($sunset - 1.hours)
-			return true
-		else
+	if ENV["SWIFTBAR"]
+		if ENV["OS_APPEARANCE"] == "Light"
 			return false
+		else
+			return true
 		end
 	else
-		return true
+		if `/usr/bin/defaults read -g AppleInterfaceStyleSwitchesAutomatically 2> /dev/null`['1']
+			if $dt < ($sunrise + 1.hours) or $dt > ($sunset - 1.hours)
+				return true
+			else
+				return false
+			end
+		else
+			return true
+		end
 	end
 end
 
@@ -660,533 +755,53 @@ def moon(thedate)
 	end
 end
 
-def forecasticon(text)
-	text.gsub!('のち', '後')
-	text.gsub!('晴れ', '晴')
-	text.gsub!('曇り', '曇')
-	text.strip!
-	case text
-	when "晴"
-		icon = "#{FINE}"
-	when "晴時々曇"
-		icon = "#{FINE} #{OCCASIONAL} #{CLOUDY}"
-	when "晴一時曇"
-		icon = "#{FINE} #{ONCE} #{CLOUDY}"
-	when "晴時々雨"
-		icon = "#{FINE} #{OCCASIONAL} #{RAIN}"
-	when "晴一時雨"
-		icon = "#{FINE} #{ONCE} #{RAIN}"
-	when "晴時々雪"
-		icon = "#{FINE} #{OCCASIONAL} #{SNOW}"
-	when "晴一時雪"
-		icon = "#{FINE} #{ONCE} #{SNOW}"
-	when "晴後曇"
-		icon = "#{FINE} #{THEN} #{CLOUDY}"
-	when "晴後雨"
-		icon = "#{FINE} #{THEN} #{RAIN}"
-	when "晴後雪"
-		icon = "#{FINE} #{THEN} #{SNOW}"
-	when "曇"
-		icon = "#{CLOUDY}"
-	when "曇時々晴"
-		icon = "#{CLOUDY} #{OCCASIONAL} #{FINE}"
-	when "曇一時晴"
-		icon = "#{CLOUDY} #{ONCE} #{FINE}"
-	when "曇時々雨"
-		icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
-	when "曇時々雨か雪"
-		icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
-	when "曇一時雨"
-		icon = "#{CLOUDY} #{ONCE} #{RAIN}"
-	when "曇一時雨か雪"
-		icon = "#{CLOUDY} #{ONCE} #{RAIN}"
-	when "曇一時雪か雨"
-		icon = "#{CLOUDY} #{ONCE} #{SNOW}"
-	when "曇時々雪"
-		icon = "#{CLOUDY} #{OCCASIONAL} #{SNOW}"
-	when "曇時々雪か雨"
-		icon = "#{CLOUDY} #{OCCASIONAL} #{SNOW}"
-	when "曇一時雪"
-		icon = "#{CLOUDY} #{ONCE} #{SNOW}"
-	when "曇後晴"
-		icon = "#{CLOUDY} #{THEN} #{FINE}"
-	when "曇後雨"
-		icon = "#{CLOUDY} #{THEN} #{RAIN}"
-	when "曇後一時雨"
-		icon = "#{CLOUDY} #{ONCE} #{RAIN}"
-	when "曇後雪"
-		icon = "#{CLOUDY} #{THEN} #{SNOW}"
-	when "雨"
-		icon = "#{RAIN}"
-	when "雨時々晴"
-		icon = "#{RAIN} #{OCCASIONAL} #{FINE}"
-	when "雨一時晴"
-		icon = "#{RAIN} #{ONCE} #{FINE}"
-	when "雨時々曇"
-		icon = "#{RAIN} #{OCCASIONAL} #{CLOUDY}"
-	when "雨時々止む"
-		icon = "#{RAIN} #{OCCASIONAL} #{CLOUDY}"
-	when "雨一時曇"
-		icon = "#{RAIN} #{ONCE} #{CLOUDY}"
-	when "雨時々雪"
-		icon = "#{RAIN} #{OCCASIONAL} #{SNOW}"
-	when "雨一時雪"
-		icon = "#{RAIN} #{ONCE} #{SNOW}"
-	when "雨後晴"
-		icon = "#{RAIN} #{THEN} #{FINE}"
-	when "雨後曇"
-		icon = "#{RAIN} #{THEN} #{CLOUDY}"
-	when "雨後雪"
-		icon = "#{RAIN} #{THEN} #{SNOW}"
-	when "雪"
-		icon = "#{SNOW}"
-	when "雪時々晴"
-		icon = "#{SNOW} #{OCCASIONAL} #{FINE}"
-	when "雪一時晴"
-		icon = "#{SNOW} #{ONCE} #{FINE}"
-	when "雪時々曇"
-		icon = "#{SNOW} #{OCCASIONAL} #{CLOUDY}"
-	when "雪一時曇"
-		icon = "#{SNOW} #{ONCE} #{CLOUDY}"
-	when "雪時々雨"
-		icon = "#{SNOW} #{OCCASIONAL} #{RAIN}"
-	when "雪一時雨"
-		icon = "#{SNOW} #{ONCE} #{RAIN}"
-	when "雪後晴"
-		icon = "#{SNOW} #{THEN} #{FINE}"
-	when "雪後曇"
-		icon = "#{SNOW} #{THEN} #{CLOUDY}"
-	when "雪後雨"
-		icon = "#{SNOW} #{THEN} #{RAIN}"
+def forecasticon(forecast,istoday)
+	icon = WEATHERCODE[forecast].clone
+	
+	icon = "#{SNOW}#{WIND}" if icon == "暴風雪" or icon == "風雪強い"
+	icon = HEAVYRAIN if icon == "雨一時強く降る" or icon == "大雨"
+	icon = HEAVYSNOW if icon == "雪一時強く降る"
+	
+	icon.sub!(/山沿い.+/,'')
+	icon.sub!("晴明け方霧","#{FOG} #{THEN} 晴")
+	icon.sub!("曇海上海岸は霧か霧雨",CLOUDY)
+	
+	if istoday and isnight
+		icon.sub!("晴",moon($dt))
 	else
-		icon = "❓"
+		icon.sub!("晴",FINE)
 	end
-end
-
-def lightning(text)
-	if text["雷"]
-		return true
-	else
-		return false
-	end
-end
-
-def strongrain(text)
-	if text["強い雨"] or text["激しい雨"] or text["猛烈な雨"] or text["激しく　降る"]
-		return true
-	else
-		return false
-	end
-end
-
-def strongwind(text)
-	if text["強い風"] | text["猛烈な風"]
-		return true
-	else
-		return false
-	end
-end
-
-def forecastdetailsicon(forecast,details,istoday)
-	forecast.gsub!('のち', '後')
-	forecast.gsub!('晴れ', '晴')
-	forecast.gsub!('曇り', '曇')
-	forecast.strip!
-	case forecast
-	when "晴"
-		if istoday and isnight
-			icon = moon($dt)
-		else
-			icon = "#{FINE}"
-		end
-	when "晴時々曇"
-		if istoday and isnight
-			icon = "#{moon($dt)} #{OCCASIONAL} #{CLOUDY}"
-		else
-			icon = "#{FINE} #{OCCASIONAL} #{CLOUDY}"
-		end
-	when "晴一時曇"
-		icon = "#{FINE} #{ONCE} #{CLOUDY}"
-	when "晴時々雨"
-		if strongrain(details)
-			if istoday and isnight
-				icon = "#{moon($dt)} #{OCCASIONAL} #{HEAVYRAIN}"
-			else
-				icon = "#{FINE} #{OCCASIONAL} #{HEAVYRAIN}"
-			end
-		elsif lightning(details)
-			if istoday and isnight
-				icon = "#{moon($dt)} #{OCCASIONAL} #{LIGHTNING}"
-			else
-				icon = "#{FINE} #{OCCASIONAL} #{LIGHTNING}"
-			end
- 		else
-			if istoday and isnight
-				icon = "#{moon($dt)} #{OCCASIONAL} #{RAIN}"
-			else
-				icon = "#{FINE} #{OCCASIONAL} #{RAIN}"
-			end
-		end
-	when "晴一時雨"
-		if strongrain(details)
-			if istoday and isnight
-				icon = "#{moon($dt)} #{ONCE} #{HEAVYRAIN}"
-			else
-				icon = "#{FINE} #{ONCE} #{HEAVYRAIN}"
-			end
-		elsif lightning(details)
-			if istoday and isnight
-				icon = "#{moon($dt)} #{ONCE} #{LIGHTNING}"
-			else
-				icon = "#{FINE} #{ONCE} #{LIGHTNING}"
-			end
- 		else
-			if istoday and isnight
-				icon = "#{moon($dt)} #{ONCE} #{RAIN}"
-			else
-				icon = "#{FINE} #{ONCE} #{RAIN}"
-			end
-		end
-	when "晴時々雪"
-		if istoday and isnight
-			icon = "#{moon($dt)} #{OCCASIONAL} #{SNOW}"
-		else
-			icon = "#{FINE} #{OCCASIONAL} #{SNOW}"
-		end
-	when "晴一時雪"
-		if istoday and isnight
-			icon = "#{moon($dt)} #{ONCE} #{SNOW}"
-		else
-			icon = "#{FINE} #{ONCE} #{SNOW}"
-		end
-	when "晴後曇"
-		if istoday and isnight
-			icon = "#{moon($dt)} #{THEN} #{CLOUDY}"
-		else
-			icon = "#{FINE} #{THEN} #{CLOUDY}"
-		end
-	when "晴後時々曇"
-		icon = "#{FINE} #{THEN} #{FINECLOUD}"
-	when "晴後雨"
-		if strongrain(details)
-			if istoday and isnight
-				icon = "#{moon($dt)} #{THEN} #{HEAVYRAIN}"
-			else
-				icon = "#{FINE} #{THEN} #{HEAVYRAIN}"
-			end
-		elsif lightning(details)
-			if istoday and isnight
-				icon = "#{moon($dt)} #{THEN} #{LIGHTNING}"
-			else
-				icon = "#{FINE} #{THEN} #{LIGHTNING}"
-			end
- 		else
-			if istoday and isnight
-				icon = "#{moon($dt)} #{THEN} #{RAIN}"
-			else
-				icon = "#{FINE} #{THEN} #{RAIN}"
-			end
-		end
-	when "晴後雪"
-		if istoday and isnight
-			icon = "#{moon($dt)} #{THEN} #{SNOW}"
-		else
-			icon = "#{FINE} #{THEN} #{SNOW}"
-		end
-	when "曇"
-		icon = "#{CLOUDY}"
-	when "曇時々晴"
-		if istoday and isnight
-			icon = "#{CLOUDY} #{OCCASIONAL} #{moon($dt)}"
-		else
-			icon = "#{CLOUDY} #{OCCASIONAL} #{FINE}"
-		end
-	when "曇後時々晴"
-		icon = "#{CLOUDY} #{THEN} #{CLOUDFINE}"
-	when "曇一時晴"
-		if istoday and isnight
-			icon = "#{CLOUDY} #{ONCE} #{moon($dt)}"
-		else
-			icon = "#{CLOUDY} #{ONCE} #{FINE}"
-		end
-	when "曇時々雨"
-		if strongrain(details)
-			icon = "#{CLOUDY} #{OCCASIONAL} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{CLOUDY} #{OCCASIONAL} #{LIGHTNING}"
- 		else
-			icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
-		end
-	when "曇時々雨か雪"
-		if strongrain(details)
-			icon = "#{CLOUDY} #{OCCASIONAL} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{CLOUDY} #{OCCASIONAL} #{LIGHTNING}"
- 		else
-			icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
-		end
-	when "曇一時雨"
-		if strongrain(details)
-			icon = "#{CLOUDY} #{ONCE} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{CLOUDY} #{ONCE} #{LIGHTNING}"
- 		else
-			icon = "#{CLOUDY} #{ONCE} #{RAIN}"
-		end
-	when "曇時々雪"
-		icon = "#{CLOUDY} #{OCCASIONAL} #{SNOW}"
-	when "曇時々雪か雨"
-		icon = "#{CLOUDY} #{OCCASIONAL} #{SNOW}"
-	when "曇一時雪"
-		icon = "#{CLOUDY} #{ONCE} #{SNOW}"
-	when "曇一時雨か雪"
-		if strongrain(details)
-			icon = "#{CLOUDY} #{ONCE} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{CLOUDY} #{ONCE} #{LIGHTNING}"
- 		else
-			icon = "#{CLOUDY} #{ONCE} #{RAIN}"
-		end
-	when "曇一時雪か雨"
-		if strongrain(details)
-			icon = "#{CLOUDY} #{ONCE} #{HEAVYSNOW}"
-		elsif lightning(details)
-			icon = "#{CLOUDY} #{ONCE} #{LIGHTNING}"
- 		else
-			icon = "#{CLOUDY} #{ONCE} #{SNOW}"
-		end
-	when "曇後晴"
-		if istoday and isnight
-			icon = "#{CLOUDY} #{THEN} #{moon($dt)}"
-		else
-			icon = "#{CLOUDY} #{THEN} #{FINE}"
-		end
-	when "曇後雨"
-		if strongrain(details)
-			icon = "#{CLOUDY} #{THEN} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{CLOUDY} #{THEN} #{LIGHTNING}"
- 		else
-			icon = "#{CLOUDY} #{THEN} #{RAIN}"
-		end
-	when "曇後雨か雪"
-		if strongrain(details)
-			icon = "#{CLOUDY} #{THEN} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{CLOUDY} #{THEN} #{LIGHTNING}"
- 		else
-			icon = "#{CLOUDY} #{THEN} #{RAIN}"
-		end
-	when "曇後時々雨"
-		if strongrain(details)
-			icon = "#{CLOUDY} #{OCCASIONAL} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{CLOUDY} #{OCCASIONAL} #{LIGHTNING}"
- 		else
-			icon = "#{CLOUDY} #{OCCASIONAL} #{RAIN}"
-		end
-	when "曇後一時雨"
-		if strongrain(details)
-			icon = "#{CLOUDY} #{ONCE} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{CLOUDY} #{ONCE} #{LIGHTNING}"
- 		else
-			icon = "#{CLOUDY} #{ONCE} #{RAIN}"
-		end
-	when "曇後雪"
-		icon = "#{CLOUDY} #{THEN} #{SNOW}"
-	when "雨"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING}"
-		else
-			icon = "#{RAIN}"
-		end
-	when "雨か雪"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING}"
-		else
-			icon = "#{RAIN}"
-		end
-	when "雨時々晴"
-		if strongrain(details)
-			if istoday and isnight
-				icon = "#{HEAVYRAIN} #{OCCASIONAL} #{moon($dt)}"
-			else
-				icon = "#{HEAVYRAIN} #{OCCASIONAL} #{FINE}"
-			end
-		elsif lightning(details)
-			if istoday and isnight
-				icon = "#{LIGHTNING} #{OCCASIONAL} #{moon($dt)}"
-			else
-				icon = "#{LIGHTNING} #{OCCASIONAL} #{FINE}"
-			end
-		else
-			if istoday and isnight
-				icon = "#{RAIN} #{OCCASIONAL} #{moon($dt)}"
-			else
-				icon = "#{RAIN} #{OCCASIONAL} #{FINE}"
-			end
-		end
-	when "雨一時晴"
-		if strongrain(details)
-			if istoday and isnight
-				icon = "#{HEAVYRAIN} #{ONCE} #{moon($dt)}"
-			else
-				icon = "#{HEAVYRAIN} #{ONCE} #{FINE}"
-			end
-		elsif lightning(details)
-			if istoday and isnight
-				icon = "#{LIGHTNING} #{ONCE} #{moon($dt)}"
-			else
-				icon = "#{LIGHTNING} #{ONCE} #{FINE}"
-			end
-		else
-			if istoday and isnight
-				icon = "#{RAIN} #{ONCE} #{moon($dt)}"
-			else
-				icon = "#{RAIN} #{ONCE} #{FINE}"
-			end
-		end
-	when "雨時々曇"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN} #{OCCASIONAL} #{CLOUDY}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING} #{OCCASIONAL} #{CLOUDY}"
-		else
-			icon = "#{RAIN} #{OCCASIONAL} #{CLOUDY}"
-		end
-	when "雨時々止む"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN} #{OCCASIONAL} #{CLOUDY}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING} #{OCCASIONAL} #{CLOUDY}"
-		else
-			icon = "#{RAIN} #{OCCASIONAL} #{CLOUDY}"
-		end
-	when "雨一時曇"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN} #{ONCE} #{CLOUDY}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING} #{ONCE} #{CLOUDY}"
-		else
-			icon = "#{RAIN} #{ONCE} #{CLOUDY}"
-		end
-	when "雨時々雪"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN} #{OCCASIONAL} #{SNOW}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING} #{OCCASIONAL} #{SNOW}"
-		else
-			icon = "#{RAIN} #{OCCASIONAL} #{SNOW}"
-		end
-	when "雨一時雪"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN} #{ONCE} #{SNOW}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING} #{ONCE} #{SNOW}"
-		else
-			icon = "#{RAIN} #{ONCE} #{SNOW}"
-		end
-	when "雨後晴"
-		if strongrain(details)
-			if istoday and isnight
-				icon = "#{HEAVYRAIN} #{THEN} #{moon($dt)}"
-			else
-				icon = "#{HEAVYRAIN} #{THEN} #{FINE}"
-			end
-		elsif lightning(details)
-			if istoday and isnight
-				icon = "#{LIGHTNING} #{THEN} #{moon($dt)}"
-			else
-				icon = "#{LIGHTNING} #{THEN} #{FINE}"
-			end
-		else
-			if istoday and isnight
-				icon = "#{RAIN} #{THEN} #{moon($dt)}"
-			else
-				icon = "#{RAIN} #{THEN} #{FINE}"
-			end
-		end
-	when "雨後曇"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN} #{THEN} #{CLOUDY}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING} #{THEN} #{CLOUDY}"
-		else
-			icon = "#{RAIN} #{THEN} #{CLOUDY}"
-		end
-	when "雨か雪後曇"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN} #{THEN} #{CLOUDY}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING} #{THEN} #{CLOUDY}"
-		else
-			icon = "#{RAIN} #{THEN} #{CLOUDY}"
-		end
-	when "雨後雪"
-		if strongrain(details)
-			icon = "#{HEAVYRAIN} #{THEN} #{SNOW}"
-		elsif lightning(details)
-			icon = "#{LIGHTNING} #{THEN} #{SNOW}"
-		else
-			icon = "#{RAIN} #{THEN} #{SNOW}"
-		end
-	when "雪"
-		icon = "#{SNOW}"
-	when "雪か雨"
-		icon = "#{SNOW}"
-	when "雪時々晴"
-		icon = "#{SNOW} #{OCCASIONAL} #{FINE}"
-	when "雪一時晴"
-		icon = "#{SNOW} #{ONCE} #{FINE}"
-	when "雪時々曇"
-		icon = "#{SNOW} #{OCCASIONAL} #{CLOUDY}"
-	when "雪時々止む"
-		icon = "#{SNOW} #{OCCASIONAL} #{CLOUDY}"
-	when "雪一時曇"
-		icon = "#{SNOW} #{ONCE} #{CLOUDY}"
-	when "雪時々雨"
-		if strongrain(details)
-			icon = "#{SNOW} #{OCCASIONAL} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{SNOW} #{OCCASIONAL} #{LIGHTNING}"
-		else
-			icon = "#{SNOW} #{OCCASIONAL} #{RAIN}"
-		end
-	when "雪一時雨"
-		if strongrain(details)
-			icon = "#{SNOW} #{ONCE} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{SNOW} #{ONCE} #{LIGHTNING}"
-		else
-			icon = "#{SNOW} #{ONCE} #{RAIN}"
-		end
-	when "雪後晴"
-		if istoday and isnight
-			icon = "#{SNOW} #{THEN} #{moon($dt)}"
-		else
-			icon = "#{SNOW} #{THEN} #{FINE}"
-		end
-	when "雪後曇"
-		icon = "#{SNOW} #{THEN} #{CLOUDY}"
-	when "雪後雨"
-		if strongrain(details)
-			icon = "#{SNOW} #{THEN} #{HEAVYRAIN}"
-		elsif lightning(details)
-			icon = "#{SNOW} #{THEN} #{LIGHTNING}"
-		else
-			icon = "#{SNOW} #{ONCE} #{RAIN}"
-		end
-	else
-		icon = "❓"
-	end
-	if strongwind(details)
-		icon.concat("・#{WIND}")
-	end
+	
+	icon.sub!("で雷を伴う",LIGHTNING)
+	icon.sub!("雨か雷雨","#{RAIN}#{LIGHTNING}")
+	icon.sub!("雷雨",LIGHTNINGRAIN)
+	icon.sub!("で暴風を伴う",WIND)
+	
+	icon.sub!(/^朝の内/,'')
+	icon = icon.sub("朝の内一時",'').reverse.insert(1,"一時") if icon.match?("朝の内一時")
+		
+	icon.sub!("後"," #{THEN} ")
+	icon.sub!("一時"," #{ONCE} ")
+	icon.sub!("夜は"," #{THEN} ")
+	icon.sub!("時々"," #{OCCASIONAL} ")
+	icon.sub!("朝夕"," #{OCCASIONAL} ")
+	icon.sub!("後一時"," #{ONCE} ")
+	icon.sub!("後時々"," #{OCCASIONAL} ")
+	icon.sub!("時々止む"," #{OCCASIONAL} ")
+	icon.sub!("午後は"," #{THEN} ")
+	icon.sub!("昼頃から"," #{THEN} ")
+	icon.sub!("夕方一時"," #{ONCE} ")
+	icon.sub!("日中時々"," #{OCCASIONAL} ")
+	icon.sub!("朝夕一時"," #{ONCE} ")
+	icon.sub!("朝晩一時"," #{ONCE} ")
+	
+	icon.sub!("曇",CLOUDY)
+	icon.sub!("雨",RAIN)
+	icon.sub!("雪",SNOW)
+	icon.sub!("霧",FOG)
+	icon.sub!("霙",ICE)
+	
+	icon.sub!("か",'')
 	return icon
 end
 
@@ -1219,21 +834,13 @@ end
 def climacellicon(code)
 	case code
 	when 0 # Unknown
-		icon = "❓"
+		icon = "#{UNKNOWN}"
 	when 1000 # Clear
-		if isnight
-			icon = moon($dt)
-		else
-			icon = "#{FINE}"
-		end
+		isnight ? (icon = moon($dt)) : (icon = "#{FINE}")
 	when 1001 # Cloudy
 		icon = "#{CLOUDY}"
 	when 1100 # Mostly Clear
-		if isnight
-			icon = moon($dt)
-		else
-			icon = "#{FINECLOUD}"
-		end
+		isnight ? (icon = moon($dt)) : (icon = "#{FINECLOUD}")
 	when 1101 # Partly Cloudy
 		icon = "#{CLOUDFINE}"
 	when 1102 # Mostly Cloudy
@@ -1283,55 +890,100 @@ def climacellicon(code)
 	end
 end
 
-def formatyoho(text)
-	text.gsub!(/くもり/, '曇り')
-	text.gsub!(/波/, '\n\0')
-	text.gsub!(/ただし/, '\n\0')
-	text.gsub!(/所により/, '\n\0')
-	text.gsub!(/(所により)(.+)(から)[　]{,1}/, '\1\2\3\n')
-	text.gsub!(/([[:word:]]+?)[　]{1}では/, '\n\1　では')
-	# text.gsub!(/２３区/, '\n\0')
-	text.gsub!(/(風)([^晴曇雨雪]{,10})([晴曇雨雪]{1})/, '\1\2\n\3')
-	text.gsub!('メートル',' m/s')
-	text.gsub!(/^　+/, "")
-	text.gsub!(/\\n/, "\n")
-	text.gsub!(/\n^　+$\n/, "\n")
-	text.gsub!(/\n\n/, "\n")
-	text = NKF.nkf('-X -w', text).tr('０-９．', '0-9.')
+def formatnum(s)
+	return NKF.nkf('-X -w', s).tr('０-９．', '0-9.')
 end
 
-def formatweekrain(text)
-	a = text.split('/').map do |e|
-		if e == '-'
-			' '
-		else
-			e.concat('%')
-		end
+def formatdaysmenu(h)
+	wind = h[:wind].split('　')[0].gsub('メートル',' m/s')
+	if h[:wind].split('　').length > 1
+		wind += "\n" + h[:wind].split('　')[1..-1].join('　').gsub('メートル',' m/s')
 	end
-end
-
-def formatweektemp(text) # only [>=2]
-	[text[/^([\d-]+)/],text[/(\([\d-]+)～/],text[/([\d-]+)\)/]]
+	wave = h[:wave].gsub('メートル',' m/s')
+	text = "#{WEATHERCODE[h[:weather]]}\n#{wind}\n波　#{wave}"
+	return formatnum(text)
 end
 
 def winddirconv(degree)
-	cardinals = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+	cardinals = ['北', '北北東', '北東', '東北東', '東', '東南東', '南東', '南南東', '南', '南南西', '南西', '西南西', '西', '西北西', '北西', '北北西']
 	dir = ((degree * 16) / 360).round(0)
 	cardinals[dir]
 end
 
+def hourcircle(i)
+	i = (i.to_i + 9) % 24
+	case i
+	when 0
+		return '⓪'
+	when 1
+		return '①'
+	when 2
+		return '②'
+	when 3
+		return '③'
+	when 4
+		return '④'
+	when 5
+		return '⑤'
+	when 6
+		return '⑥'
+	when 7
+		return '⑦'
+	when 8
+		return '⑧'
+	when 9
+		return '⑨'
+	when 10
+		return '⑩'
+	when 11
+		return '⑪'
+	when 12
+		return '⑫'
+	when 13
+		return '⑬'
+	when 14
+		return '⑭'
+	when 15
+		return '⑮'
+	when 16
+		return '⑯'
+	when 17
+		return '⑰'
+	when 18
+		return '⑱'
+	when 19
+		return '⑲'
+	when 20
+		return '⑳'
+	when 21
+		return '㉑'
+	when 22
+		return '㉒'
+	when 23
+		return '㉓'
+	when 24
+		return '㉔'
+	else
+		return '〇'
+	end
+end
+
 def adjustpadding(string)
-	text = Magick::Draw.new
-	text.font = "Menlo"
-	text.text_antialias(true)
-	text.font_style=Magick::NormalStyle
-	text.font_weight=Magick::NormalWeight
-	text.gravity=Magick::CenterGravity
-	width = text.get_type_metrics(string).width
-	if width < 7
-		return 1
-	elsif width > 18
-		return -1
+	unless string.nil?
+		text = Magick::Draw.new
+		text.font = "Menlo"
+		text.text_antialias(true)
+		text.font_style=Magick::NormalStyle
+		text.font_weight=Magick::NormalWeight
+		text.gravity=Magick::CenterGravity
+		width = text.get_type_metrics(string).width
+		if width < 7
+			return 1
+		elsif width > 18
+			return -1
+		else
+			return 0
+		end
 	else
 		return 0
 	end
@@ -1379,18 +1031,12 @@ rescue
 	s64 = '⚠️'
 end
 
-rain = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/amedas_h/today-#{$local}.html"))
-
-rainfall = 0
-rain.css('td').select{|text| text['class'] == "block middle"}[0..$dh-1].each do |line|
-	rainfall += line.text.to_f end
-
 
 if ifdarkmode
 	$textcolor = 'lightgray'
 	$advcolor = 'yellow'
 	$wrncolor = 'orange'
-	$textansi = '37'
+	$textansi = '97'
 	$rainansi = '36'
 else
 	$textcolor = 'darkslategray'
@@ -1400,18 +1046,6 @@ else
 	$rainansi = '1;36'
 end
 
-### warning
-
-if gaikyo.match?(/注意|警報|警戒|非常|大雨|洪水|強風|暴風|風雪|大雪|波浪|高潮|雷|融雪|濃霧|乾燥|なだれ|低温|霜|着氷|着雪/)
-	warninghtml = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/warn/f_#{$warnlocal}.html"))
-	if warninghtml.css('table').select{|t| t['class'] == "WarnJikeiTable"}.length > 0
-		warningtoday,warningtomorrow = warning(warninghtml)
-	else
-		warningtoday = warningtomorrow = nil
-	end
-else
-	warningtoday = warningtomorrow = nil
-end
 ###
 
 # darksky = JSON.parse(URI.open("https://api.darksky.net/forecast/#{$darkskyapi}/#{$latlon}?units=si").read)
@@ -1453,23 +1087,20 @@ end
 
 visualcrossing = JSON.parse(URI.open("https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/#{$latlon}?unitGroup=metric&key=#{$visualcrossingapi}&include=alerts%2Ccurrent").read)
 
-temp = visualcrossing['currentConditions']['temp'].to_f.round(1)
+# temp = visualcrossing['currentConditions']['temp'].to_f.round(1)
 apptemp = visualcrossing['currentConditions']['feelslike'].to_f.round(1)
-dewpoint = visualcrossing['currentConditions']['dew'].to_f.round(1)
-humidity = visualcrossing['currentConditions']['humidity'].to_f.round(0) # %
-pressure = visualcrossing['currentConditions']['pressure'] # hectopascal
-windspeed = visualcrossing['currentConditions']['windspeed'].to_f.round(1) # m/s
-gust = visualcrossing['currentConditions']['windgust'].to_f.round(1) # m/s
-winddir = visualcrossing['currentConditions']['winddir'].to_i # deg
-if gust.nil?
-	wind = "#{windspeed} m/s #{winddirconv(winddir)}"
-else
-	wind = "#{windspeed} m/s (#{gust} m/s) #{winddirconv(winddir)}"
-end
-uv = nil
-precip = visualcrossing['currentConditions']['precip'].to_f.round(1) # mm/h
-precipprob = visualcrossing['currentConditions']['precipprob'].to_f.round(1)
-# snow snowdepth preciptype
+# dewpoint = visualcrossing['currentConditions']['dew'].to_f.round(1)
+# humidity = visualcrossing['currentConditions']['humidity'].to_f.round(0) # %
+# pressure = visualcrossing['currentConditions']['pressure'] # hectopascal
+# windspeed = visualcrossing['currentConditions']['windspeed'].to_f.round(1) # m/s
+# gust = visualcrossing['currentConditions']['windgust'].to_f.round(1) # m/s
+# winddir = visualcrossing['currentConditions']['winddir'].to_i # deg
+# if gust.nil?
+# 	wind = "#{windspeed} m/s #{winddirconv(winddir)}"
+# else
+# 	wind = "#{windspeed} m/s (#{gust} m/s) #{winddirconv(winddir)}"
+# end
+# uv = nil
 unless visualcrossing['currentConditions']['cloudcover'].nil?
 	cloudcover = visualcrossing['currentConditions']['cloudcover'].round(0) # %
 else
@@ -1514,24 +1145,33 @@ icon = darkskyicon(visualcrossing['currentConditions']['icon'])
 # # 0: Good (0-50), 1: Moderate (51-100), 2: Unhealthy for Sensitive Groups (101-150)
 # # 3: Unhealthy (151-200), 4: Very Unhealthy (201-300), 5: Hazardous (>301)
 
-jma = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/amedas_h/today-#{$amedas}.html"))
+jma = JSON.parse(URI.open("https://www.jma.go.jp/bosai/amedas/data/point/#{$amedas}/#{$dtame}.json").read)
 
+temp = humidity = pressure = precip = 0
+wind = gust = mintemp = maxtemp = ''
+
+current = jma.map {|k,v| v}.last
+update = Time.parse(jma.map {|k,v| k}.last).strftime("%H:%M")
 temp = windspeed = humidity = pressure = snow = 0
 winddir = ''
 
-current = jma.css('td').select{|text| text['class'] == "block middle"}[$dh*8-8..$dh*8-1]
-
-temp = current[0].text.to_f
-winddir = current[2].text.to_s
-windspeed = current[3].text.to_f
-wind = "#{windspeed} m/s #{winddir}"
-humidity = current[6].text.to_f
-pressure = current[7].text.to_f
-snow = current[5].text.to_f
+temp = current['temp'].first
+wind = "#{winddirconv(current['windDirection'].first)} #{current['wind'].first} m/s"
+gust = "#{winddirconv(current['gustDirection'].first)} #{current['gust'].first} m/s #{hourcircle(current['gustTime']['hour'])}"
+humidity = current['humidity'].first
+pressure = current['normalPressure'].first
+precip = current['precipitation1h'].first
+precipday = current['precipitation24h'].first
+snow = current['snow1h'].first unless current['snow1h'].nil?
+snowday = current['snow24h'].first unless current['snow24h'].nil?
+mintemp = "#{current['minTemp'].first}° #{hourcircle(current['minTempTime']['hour'])}"
+maxtemp = "#{current['maxTemp'].first}° #{hourcircle(current['maxTempTime']['hour'])}"
 
 dewpoint = (temp - (100 - humidity)/5).round(1)
-apptemp = (temp + 0.33 * (6.105 * humidity/100 * Math::E**((17.27*temp)/(237.7+temp))) - 0.7 * windspeed - 4).round(1)
+capptemp = (temp + 0.33 * (6.105 * humidity/100 * Math::E**((17.27*temp)/(237.7+temp))) - 0.7 * windspeed - 4).round(1)
 # http://www.bom.gov.au/info/thermal_stress/#atapproximation
+
+lastquake = earthquake
 
 ######
 
@@ -1539,131 +1179,135 @@ puts "#{icon} #{temp}°"
 puts "---"
 puts "#{$place} | color=lightslategray"
 puts "---"
-puts "温  #{temp}° (#{apptemp}°) | color=#{$textcolor}"
+# puts "温  #{temp}° (#{apptemp}°) | color=#{$textcolor}"
+puts "\033[#{$textansi}m温  #{temp}° (#{apptemp}/#{capptemp}°)  \033[34m#{mintemp}  \033[31m#{maxtemp} | color=#{$textcolor} ansi=true"
 puts "湿  #{humidity}% (#{dewpoint}°) | color=#{$textcolor}"
-puts "圧  #{pressure} hPa | color=#{$textcolor}" unless pressure.nil?
-puts "風  #{wind} | color=#{$textcolor}"
-puts "雨  #{precip} mm/h (#{precipprob} mm/h) #{rainfall if rainfall > 0} #{'mm' if rainfall > 0} | color=#{$textcolor}" if precip > 0 or precipprob > 0
+puts "圧  #{pressure} hPa | color=#{$textcolor}" if defined?(pressure)
+puts "風  #{wind} (#{gust})| color=#{$textcolor}"
+puts "雨  #{precip} mm/h (#{precipday} mm/d) | color=#{$textcolor}" if precip > 0
+puts "雪  #{precip} mm/h (#{snowday} mm/d) | color=#{$textcolor}" if not snow.nil? and snow > 0
+# puts "雨  #{precip} mm/h (#{precipprob} mm/h) #{rainfall if rainfall > 0} #{'mm' if rainfall > 0} | color=#{$textcolor}" if precip > 0 or precipprob > 0
 puts "雲  #{clouds} | color=#{$textcolor}"
-puts "視  #{visibility} km | color=#{$textcolor}" unless visibility.nil?
-puts "紫  #{uv} | color=#{$textcolor}" unless uv.nil?
-
-# image forecast icon
-# puts "---"
-# puts "#{yohodate[0]} | color=#{$textcolor}"
-# formatyoho(yohotext[0]).each_line do |line|
-# 	puts "--#{line.strip} | color=#{$textcolor}"
-# end
-# puts "#{yohorain[0]} #{yohorain[1]} #{yohorain[2]} #{yohorain[3]} | color=#{$textcolor} | #{forecasticon(yohoicon[0])}"
-# puts "#{yohodate[1]} | color=#{$textcolor}"
-# formatyoho(yohotext[1]).each_line do |line|
-# 	puts "--#{line.strip} | color=#{$textcolor}"
-# end
-# puts "#{yohorain[4]} #{yohorain[5]} #{yohorain[6]} #{yohorain[7]} | color=#{$textcolor} | #{forecasticon(yohoicon[1])}"
-# puts "#{yohodate[2]} | color=#{$textcolor}"
-
-if weekdate[0].include? $dw
-	w = 2
-else
-	w = 1
-end
+puts "視  #{visibility} km | color=#{$textcolor}" if defined?(visibility)
+puts "紫  #{uv} | color=#{$textcolor}" if defined?(uv)
+puts "時  #{update} | color=lightslategray"
+puts "震  #{lastquake} | color=#{$textcolor}" unless lastquake.nil?
 
 puts "---"
 
-# today
-if not warningtoday.nil? and warningtoday != []
-	if warningtoday.any? {|line| line.match("警報")}
-		puts "#{yohodate[0]} | color=#{$wrncolor}"
-	else
-		puts "#{yohodate[0]} | color=#{$advcolor}"
+# forecastdays today & tomorrow
+
+days = forecastdays
+week = forecastweek
+
+warnings = warning
+
+for i in 0..1
+	icon = ''
+	case i
+	when 0
+		date = "今日#{days[0][:date].strftime('%-d')}日"
+		istoday = true
+	when 1
+		date = "明日#{days[1][:date].strftime('%-d')}日"
+		istoday = false
 	end
-	formatyoho(yohotext[0]).each_line do |line|
-		puts "--#{line.strip} | color=#{$textcolor}"
-	end
-	warningtoday.each do |line|
-		if line.match("警報")
-			puts "--#{line.strip} | color=#{$wrncolor}"
+	unless warnings[i].blank?
+		if warnings[i].any? {|line| line.match("警報")}
+			puts "#{date} | color=#{$wrncolor}"
 		else
-			puts "--#{line.strip} | color=#{$advcolor}"
+			puts "#{date} | color=#{$advcolor}"
 		end
-	end
-else
-	puts "#{yohodate[0]} | color=#{$textcolor}"
-	formatyoho(yohotext[0]).each_line do |line|
-		puts "--#{line.strip} | color=#{$textcolor}"
-	end
-end
-
-if $dt >= $sunset
-	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[0],yohotext[0],true).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[0],yohotext[0],true)))}#{adjustspacing(forecastdetailsicon(yohoicon[0],yohotext[0],true),1)}\033[34m#{" ".rjust(4)}\033[31m#{" ".rjust(5)}   \033[#{$rainansi}m#{yohorain[0].rjust(3)} #{yohorain[1].rjust(3)} #{yohorain[2].rjust(3)} #{yohorain[3].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
-else
-	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[0],yohotext[0],true).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[0],yohotext[0],true)))}#{adjustspacing(forecastdetailsicon(yohoicon[0],yohotext[0],true),1)}\033[34m#{yohotemp[0].rjust(4)}\033[31m#{yohotemp[1].rjust(5)}   \033[#{$rainansi}m#{yohorain[0].rjust(3)} #{yohorain[1].rjust(3)} #{yohorain[2].rjust(3)} #{yohorain[3].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
-end
-
-# tomorrow
-if not warningtomorrow.nil? and warningtomorrow != []
-	if warningtomorrow.any? {|line| line.match("警報")}
-		puts "#{yohodate[1]} | color=#{$wrncolor}"
+		"#{formatdaysmenu(days[i])}".each_line do |line|
+			puts "--#{line.strip} | color=#{$textcolor}"
+		end
+		warnings[i].each do |line|
+			if line.match("警報")
+				puts "--#{line.strip} | color=#{$wrncolor}"
+			else
+				puts "--#{line.strip} | color=#{$advcolor}"
+			end
+		end
 	else
-		puts "#{yohodate[1]} | color=#{$advcolor}"
-	end
-	formatyoho(yohotext[1]).each_line do |line|
-		puts "--#{line.strip} | color=#{$textcolor} ansi=true"
-	end
-	warningtomorrow.each do |line|
-		if line.match("警報")
-			puts "--#{line.strip} | color=#{$wrncolor}"
-		else
-			puts "--#{line.strip} | color=#{$advcolor}"
+		puts "#{date} | color=#{$textcolor}"
+		"#{formatdaysmenu(days[i])}".each_line do |line|
+			puts "--#{line.strip} | color=#{$textcolor}"
 		end
 	end
-else
-	puts "#{yohodate[1]} | color=#{$textcolor}"
-	formatyoho(yohotext[1]).each_line do |line|
-		puts "--#{line.strip} | color=#{$textcolor} ansi=true"
+	
+	icon = forecasticon(days[i][:weather],istoday)
+	print "\033[#{$textansi}m"
+	print "#{icon.center(ICONLENGTH+adjustpadding(icon))}"
+	
+	if days[i][:temp].empty?
+		print " ".rjust(9)
+	elsif days[i][:temp][0] == days[i][:temp][1]
+		print "\033[31m#{days[i][:temp][1].rjust(9)}˚"
+	else
+		print "\033[34m#{days[i][:temp][0].rjust(4)}˚"
+		print "\033[31m#{days[i][:temp][1].rjust(4)}˚"
 	end
-end
-if $dt >= $sunset
-	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[1],yohotext[1],false).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[1],yohotext[1],false)))}#{adjustspacing(forecastdetailsicon(yohoicon[1],yohotext[1],true),1)}\033[34m#{yohotemp[0].rjust(4)}\033[31m#{yohotemp[1].rjust(5)}   \033[#{$rainansi}m#{yohorain[4].rjust(3)} #{yohorain[5].rjust(3)} #{yohorain[6].rjust(3)} #{yohorain[7].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
-else
-	puts "\033[#{$textansi}m#{forecastdetailsicon(yohoicon[1],yohotext[1],false).center(ICONLENGTH+adjustpadding(forecastdetailsicon(yohoicon[1],yohotext[1],false)))}#{adjustspacing(forecastdetailsicon(yohoicon[1],yohotext[1],true),1)}\033[34m#{yohotemp[2].rjust(4)}\033[31m#{yohotemp[3].rjust(5)}   \033[#{$rainansi}m#{yohorain[4].rjust(3)} #{yohorain[5].rjust(3)} #{yohorain[6].rjust(3)} #{yohorain[7].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
+	
+	print "\033[#{$rainansi}m    "
+	print days[i][:pop].map {|x| "#{x.rjust(2)}%"}.join(' ').rjust(16)
+	print "| color=#{$textcolor} font=Menlo ansi=true\n"
 end
 
-while w < 7
-	puts "#{weekdate[w]} | color=#{$textcolor}"
-	if w == 1
-		formatyoho(yohotext[2]).each_line do |line|
-			puts "--#{line.strip} | color=#{$textcolor} ansi=true"
+# forecastweek
+
+week[1][:date] - $dt < 24.hours ? (w = 2) : (w = 1)
+
+for i in w..6
+	date = "#{week[i][:date].strftime('%-d')}日（#{WEEK[week[i][:date].strftime('%u')]}）"
+	puts "#{date} | color=#{$textcolor}"
+
+	if i == 1 and not days[2].nil?
+		"#{formatdaysmenu(days[2])}".each_line do |line|
+			puts "--#{line.strip} | color=#{$textcolor}"
 		end
 	end
-	puts "\033[#{$textansi}m#{forecasticon(weekicon[w]).center(ICONLENGTH+adjustpadding(forecasticon(weekicon[w])))}#{adjustspacing(forecasticon(weekicon[w]),2)}\033[34m#{formatweektemp(weekmin[w])[0].rjust(2)} #{formatweektemp(weekmin[w])[1].rjust(4)}#{formatweektemp(weekmin[w])[2].rjust(3)} \033[31m#{formatweektemp(weekmax[w])[0].rjust(2)} #{formatweektemp(weekmax[w])[1].rjust(4)}#{formatweektemp(weekmax[w])[2].rjust(3)} \033[#{$rainansi}m#{weekrain[w].rjust(3)} | color=#{$textcolor} font=Menlo ansi=true"
-	w += 1
+	
+	icon = forecasticon(week[i][:weather],false)
+	print "\033[#{$textansi}m"
+	print "#{icon.center(ICONLENGTH+adjustpadding(icon))}"
+	
+	print "\033[34m#{week[i][:temp][:min].rjust(4)} "
+	print "#{('('+week[i][:temp][:minlo]).rjust(3)}"
+	print "〜#{week[i][:temp][:minup].rjust(2)})"
+	
+	print "\033[31m#{week[i][:temp][:max].rjust(4)} "
+	print "#{('('+week[i][:temp][:maxlo]).rjust(3)}"
+	print "〜#{week[i][:temp][:maxup].rjust(2)})"
+	
+	print "\033[#{$rainansi}m"
+	print week[i][:pop].rjust(4)
+	print "| color=#{$textcolor} font=Menlo ansi=true\n"
 end
+
 
 puts "---"
 puts "天気概況 | ansi=false color=#{$textcolor}"
-gaikyo.each_line do |line|
-	puts "--#{line.strip} | color=#{$textcolor} ansi=true"
+overviewdays.each_line do |line|
+	puts "--#{line.strip} | color=#{$textcolor} ansi=false"
+end
+puts "二週間気温予報 | ansi=false color=#{$textcolor}"
+overviewweek.each_line do |line|
+	puts "--#{line.strip} | color=#{$textcolor} ansi=false"
 end
 puts "レーダー | ansi=false color=#{$textcolor}"
 puts "--#{r64}"
 puts "衛星 | color=#{$textcolor}"
 puts "--#{s64}"
-# if $dy > 170 and $dy < 320
-	typhoonhtml = Nokogiri::HTML(URI.open("http://www.jma.go.jp/jp/typh/"))
-	typhoonout = typhooninfo(typhoonhtml)
-	if typhoonout.match?(/\d/)
-		puts "台風情報 | ansi=false color=#{$textcolor}"
-		puts "--#{typhoonimg}"
-		puts typhoonout
-	end
-# end
-puts "---"
+
+typhoontarget = JSON.parse(URI.open("https://www.jma.go.jp/bosai/typhoon/data/targetTc.json").read)
+
+if typhoontarget.length > 0
+	puts "台風情報 | ansi=false color=#{$textcolor} href=https://www.jma.go.jp/bosai/map.html#elem=root&typhoon=all&contents=typhoon"
+	puts "--#{typhoonimg}"
+	puts typhooninfo(typhoontarget.map {|x| x['tropicalCyclone']})
+	# >= 44 color=#{$advcolor} >= 54 color=#{$wrncolor}
+end
 
 puts "---"
 puts "更新 | refresh=true ansi=false color=green"
-puts "気象庁…|href=http://www.jma.go.jp/jp/yoho/#{$area}.html ansi=false color=lightslategray"
-
-# TODO
-# form image
-# https://github.com/matryer/bitbar/issues/425
+puts "気象庁…|href=https://www.jma.go.jp/bosai/forecast/#area_type=offices&area_code=#{$subarea} ansi=false color=lightslategray"
