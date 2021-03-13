@@ -18,7 +18,7 @@ require 'active_support/core_ext/numeric'
 require 'nokogiri'
 require 'rmagick'
 
-$place = '東京渋谷区' # 表示のみ
+$place = '東京都渋谷区' # 表示のみ
 $latlon = '35.6895,139.6917' # API対応
 
 # APIはひとつだけで充分だが、どれもない場合は気象庁のデータのみ使用
