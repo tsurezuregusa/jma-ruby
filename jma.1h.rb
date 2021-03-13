@@ -18,11 +18,11 @@ require 'active_support/core_ext/numeric'
 require 'nokogiri'
 require 'rmagick'
 
-$place = '東京' # 表示のみ
+$place = '東京渋谷区' # 表示のみ
 $latlon = '35.6895,139.6917' # API対応
 
 # APIはひとつだけで充分だが、どれもない場合は気象庁のデータのみ使用
-# 信憑性が低いようで、観測地点が曖昧なため、現在は補足的
+# 信頼度が低いようで、観測地点が曖昧なため、現在は補足的
 # darkskyは終了する予定で、ほかのなかでclimacellが良さそう
 $darkskyapi = nil
 $openweatherapi = nil
@@ -2735,7 +2735,7 @@ def forecasticon(forecast,istoday)
 		newimg.composite!(img, Magick::CenterGravity, Magick::OverCompositeOp)
 		img = newimg
 	end
-
+	img = img.modulate(0.01,1.0,1.0) unless isdarkmode
 	return Base64.encode64(img.to_blob).gsub(/\n/, '')
 end
 
@@ -2852,6 +2852,8 @@ case code.to_s
 		icon = "🌫"
 	when "曇"
 		icon = "☁️"
+	when /[一-龠々]/
+		icon = code
 	else
 		icon = "❓"
 	end
@@ -2981,8 +2983,11 @@ begin
 	
 	radpng = $radimglist.append(false).modulate(0.9,2.0,1.0)
 	
-	# radimg = RADMAP.quantize(65536,Magick::RGBColorspace).dissolve(radpng,0.1,1, Magick::CenterGravity)
-	radimg = RADMAP.dissolve(radpng,0.3,1, Magick::CenterGravity).level(Magick::QuantumRange/30,Magick::QuantumRange*0.85)
+	if isdarkmode
+		radimg = RADMAP.dissolve(radpng,0.3,1, Magick::CenterGravity).level(Magick::QuantumRange/30,Magick::QuantumRange*0.85)
+	else
+		radimg = RADMAP.negate.modulate(0.7,1.0,1.0).dissolve(radpng,0.7,1, Magick::CenterGravity).level(Magick::QuantumRange/30,Magick::QuantumRange*0.85)
+	end
 	
 	r64 = "| refresh=true image=#{Base64.encode64(radimg.to_blob).gsub(/\n/, '')}"
 rescue
@@ -3237,7 +3242,6 @@ for i in 0..1
 	
 	icon = forecasticon(days[i][:weather],istoday)
 	print "\033[#{$textansi}m"
-	# print "#{icon.center(ICONLENGTH+adjustpadding(icon))}" # emoji
 	
 	if days[i][:temp].empty?
 		print "\t\t\t"
@@ -3272,8 +3276,6 @@ for i in w..6
 	end
 	
 	icon = forecasticon(week[i][:weather],false)
-	# print "\033[#{$textansi}m "
-	# print "#{icon.center(ICONLENGTH+adjustpadding(icon))}" # emoji
 	
 	print "\033[34m"
 	print "\t"
@@ -3284,7 +3286,6 @@ for i in w..6
 	
 	print "\033[#{$rainansi}m"
 	print "\t\t "
-	# print week[i][:pop].ljust(2) + '%'
 	print percentbar(week[i][:pop])
 	print "| image=#{icon} color=#{$textcolor} size=16 ansi=true trim=false\n"
 end
