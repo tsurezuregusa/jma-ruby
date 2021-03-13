@@ -10,7 +10,7 @@ Display local weather in Japan with BitBar/SwiftBar
 
 DarkSkyサービス終了に向け、OpenWeather、VisualCrossing、ClimaCellなどで代替を模索中
 
-Requires ruby >= 2.4, activesupport (gem), nokogiri (gem), faraday (gem), rmagick (gem), nkf (gem), imagemagick
+Requires ruby >= 2.4, activesupport (gem), nokogiri (gem), faraday (gem), nkf (gem), rmagick (gem), imagemagick
 
 ## TODO
 
@@ -18,9 +18,13 @@ Requires ruby >= 2.4, activesupport (gem), nokogiri (gem), faraday (gem), rmagic
 
 絵文字からPNGアイコンへ移行
 
+体感温度って何？
+
+非ダークモード対応
+
 ## 不具合
 
-警報はデータ不足のため全種類未検査
+警報はデータ不足のため全種類未点検
 
 絵文字の幅が異なり、文字列が不整頓
 
