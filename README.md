@@ -1,31 +1,27 @@
 # jma.bitbar
 
-Display local weather in Japan with BitBar/SwiftBar
+Display local weather in Japan with BitBar/SwiftBar/xBar
 
-日本気象情報をBitBar/SwiftBarで表示
+日本気象情報をBitBar/SwiftBar/xBarで表示
 
 気象庁ホームページリニューアル版に対応（ほとんど）JSON万歳 ＼(^o^)／
 
-地域コードをサイトから取得、スクリプト冒頭に書き込むこと
+`mapgen.rb`で白地図を作成、地域コードをサイトから取得、スクリプト冒頭に書き込むこと
 
-DarkSkyサービス終了に向け、OpenWeather、VisualCrossing、ClimaCellなどで代替を模索中
+DarkSkyサービス終了に向け、観測データは気象庁から
+
+OpenWeather、VisualCrossing、ClimaCellでそれを補足（任意）
 
 Requires ruby >= 2.4, activesupport (gem), nokogiri (gem), faraday (gem), nkf (gem), rmagick (gem), imagemagick
 
 ## TODO
 
-単独画像でなくなったレーダーや衛星写真の画像を挿入
-
-絵文字からPNGアイコンへ移行
-
-体感温度って何？
-
-非ダークモード対応
+台風地図
 
 ## 不具合
 
 警報はデータ不足のため全種類未点検
 
-絵文字の幅が異なり、文字列が不整頓
 
-![screenshot](https://user-images.githubusercontent.com/589440/81513083-46d23900-9315-11ea-8f0e-9d7351007e43.png)
+
+![screenshot](https://user-images.githubusercontent.com/589440/111020619-33717d80-83bf-11eb-9bce-e318f49e1c58.png)
