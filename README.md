@@ -59,3 +59,5 @@ Requires ruby >= 2.4, activesupport (gem), nokogiri (gem), faraday (gem), nkf (g
 ---
 
 地図データは[国土地理院](https://maps.gsi.go.jp/vector/)を基に作成
+
+アイコンは、「[Climacons](http://adamwhitcroft.com/climacons/)」Adam Whitcroft氏が作成【[出典](https://github.com/christiannaths/Climacons-Font)】（矢印などは自作）
