@@ -12,7 +12,7 @@ DarkSkyサービス終了に向け、観測データは気象庁から
 
 OpenWeather、VisualCrossing、ClimaCellでそれを補足（任意）
 
-Requires ruby >= 2.4, activesupport (gem), nokogiri (gem), faraday (gem), nkf (gem), rmagick (gem), imagemagick
+Requires ruby >= 2.4, imagemagick, rubygems: activesupport, nokogiri, faraday, rmagick, nkf, mk_sunmoon
 
 ## TODO
 

@@ -4,7 +4,7 @@
 # <bitbar.version>0.7</bitbar.version>
 # <bitbar.author.github>tsurezuregusa</bitbar.author.github>
 # <bitbar.desc>Display local weather in Japan</bitbar.desc>
-# <bitbar.dependencies>ruby >= 2.4, activesupport (gem), nokogiri (gem), faraday (gem), rmagick (gem), nkf (gem)</bitbar.dependencies>
+# <bitbar.dependencies>ruby >= 2.4, imagemagick, rubygems: activesupport, nokogiri, faraday, rmagick, nkf, mk_sunmoon</bitbar.dependencies>
 
 require 'open-uri'
 require 'faraday'
@@ -17,9 +17,10 @@ require 'active_support'
 require 'active_support/core_ext/numeric'
 require 'nokogiri'
 require 'rmagick'
+require 'mk_sunmoon'
 
 $place = '東京都渋谷区' # 表示のみ
-$latlon = '35.6895,139.6917' # API対応
+$latlon = [35.664167,139.698611]
 
 # APIはひとつだけで充分だが、どれもない場合は気象庁のデータのみ使用
 # 信頼度が低いようで、観測地点が曖昧なため、現在は補足的
@@ -1079,40 +1080,13 @@ $dtr = $dt.floor(5.minutes).utc.strftime("%Y%m%d%H%M")
 $dts = ($dt.utc-8.minutes).floor(10.minutes).utc.strftime("%Y%m%d%H%M")
 $dtm = $dt.floor(3.hours).utc.strftime("%Y%m%d%H%M")
 
-begin
-	$koyomi = Nokogiri::HTML(URI.open("http://eco.mtk.nao.ac.jp/cgi-bin/koyomi/sunmoon.cgi"))
-	$sunrise = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[0].text.strip)
-	$sunset = Time.parse($koyomi.css('td').select{|text| text['class'] != 'left'}[2].text.strip)
-	moonrisetext = $koyomi.css('td').select{|text| text['class'] != 'left'}[3].text.strip
-	if not moonrisetext['-']
-		$moonrise = moonrisetext
-	else
-		$moonrise = Time.parse('0:00')
-	end
-	moonsettext = $koyomi.css('td').select{|text| text['class'] != 'left'}[5].text.strip
-	if not moonsettext['-']
-		$moonrise = moonsettext
-	else
-		$moonrise = Time.parse('0:00')
-	end
-rescue
-	$koyomi = Nokogiri::HTML(URI.open("http://www.hinode-hinoiri.com/131130.html"))
-	$sunrise = Time.parse($koyomi.css('td').select{|text| text['table_line'] != 'left'}[1].text.sub('時',':').sub('分','').strip)
-	$sunset = Time.parse($koyomi.css('td').select{|text| text['table_line'] != 'left'}[3].text.sub('時',':').sub('分','').strip)
-	# TODO moonrise/set
-	moonrisetext = $koyomi.css('td').select{|text| text['class'] != 'left'}[3].text.strip
-	if not moonrisetext['-']
-		$moonrise = moonrisetext
-	else
-		$moonrise = Time.parse('0:00')
-	end
-	moonsettext = $koyomi.css('td').select{|text| text['class'] != 'left'}[5].text.strip
-	if not moonsettext['-']
-		$moonrise = moonsettext
-	else
-		$moonrise = Time.parse('0:00')
-	end
-end
+$sunmoon = MkSunmoon.new($dymd,$latlon[0],$latlon[1], 0)
+
+$sunrise = Time.parse($sunmoon.sunrise[0])
+$sunset = Time.parse($sunmoon.sunset[0])
+$moonrise = Time.parse($sunmoon.moonrise[0])
+$moonset = Time.parse($sunmoon.moonset[0])
+
 
 def isnight
 	if $dt > $sunset
@@ -2785,7 +2759,7 @@ case code.to_s
 	when "partly-cloudy-day"
 		icon = "⛅️"
 	when "partly-cloudy-night"
-		icon = "⛅️"
+		icon = "☁️"
 	# climacell
 	when "0" # Unknown
 		icon = "❓"
@@ -2796,9 +2770,9 @@ case code.to_s
 	when "1100" # Mostly Clear
 		isnight ? (icon = moon($dt)) : (icon = "⛅️")
 	when "1101" # Partly Cloudy
-		icon = "⛅️"
+		isnight ? (icon = "☁️") : (icon = "⛅️")
 	when "1102" # Mostly Cloudy
-		icon = "🌥"
+		isnight ? (icon = "☁️") : (icon = "🌥")
 	when "2000" # Fog
 		icon = "🌫"
 	when "2100" # Light Fog
@@ -3047,7 +3021,7 @@ end
 ### 観測データ
 
 if not $darkskyapi.nil?
-	darksky = JSON.parse(URI.open("https://api.darksky.net/forecast/#{$darkskyapi}/#{$latlon}?units=si").read)
+	darksky = JSON.parse(URI.open("https://api.darksky.net/forecast/#{$darkskyapi}/#{$latlon.join(',')}?units=si").read)
 	
 	temp = darksky['currently']['temperature'].to_f.round(1)
 	apptemp = darksky['currently']['apparentTemperature'].to_f.round(1)
@@ -3084,7 +3058,7 @@ elsif not $openweatherapi.nil?
 	icon = openweather['weather']['main']
 	
 elsif not $visualcrossingapi.nil?
-	visualcrossing = JSON.parse(URI.open("https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/#{$latlon}?unitGroup=metric&key=#{$visualcrossingapi}&include=alerts%2Ccurrent").read)
+	visualcrossing = JSON.parse(URI.open("https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/#{$latlon.join(',')}?unitGroup=metric&key=#{$visualcrossingapi}&include=alerts%2Ccurrent").read)
 	
 	temp = visualcrossing['currentConditions']['temp'].to_f.round(1)
 	apptemp = visualcrossing['currentConditions']['feelslike'].to_f.round(1)
@@ -3110,7 +3084,7 @@ elsif not $visualcrossingapi.nil?
 	icon = currenticon(visualcrossing['currentConditions']['icon'])
 	
 elsif not $climacellapi.nil?
-	climacell = JSON.parse(URI.open("https://data.climacell.co/v4/timelines?location=#{$latlon}&timesteps=1m&timezone=Asia/Tokyo&fields=temperature,temperatureApparent,dewPoint,humidity,windSpeed,windDirection,windGust,pressureSurfaceLevel,precipitationIntensity,precipitationProbability,precipitationType,visibility,cloudCover,cloudBase,cloudCeiling,weatherCode,epaIndex,epaPrimaryPollutant,epaHealthConcern", 'content-type' => 'application/json', 'apikey' => $climacellapi).read)
+	climacell = JSON.parse(URI.open("https://data.climacell.co/v4/timelines?location=#{$latlon.join(',')}&timesteps=1m&timezone=Asia/Tokyo&fields=temperature,temperatureApparent,dewPoint,humidity,windSpeed,windDirection,windGust,pressureSurfaceLevel,precipitationIntensity,precipitationProbability,precipitationType,visibility,cloudCover,cloudBase,cloudCeiling,weatherCode,epaIndex,epaPrimaryPollutant,epaHealthConcern", 'content-type' => 'application/json', 'apikey' => $climacellapi).read)
 
 	cccurrent = climacell['data']['timelines'][0]['intervals'][0]['values']
 
@@ -3218,9 +3192,18 @@ for i in 0..1
 		else
 			puts "#{date} | color=#{$advcolor}"
 		end
-		"#{formatdaysmenu(days[i])}".each_line do |line|
-			puts "--#{line.strip} | color=#{$textcolor}"
-		end
+	else
+		puts "#{date} | color=#{$textcolor}"
+	end
+	"#{formatdaysmenu(days[i])}".each_line do |line|
+		puts "--#{line.strip} | color=#{$textcolor}"
+	end
+	rain = ['－','－','－','－']
+	days[i][:pop].reverse.each_with_index do |x,i|
+		rain[3-i] = x
+	end
+	print "--雨　#{rain.join(' ')} | color=white\n"
+	unless warnings[i].blank?
 		warnings[i].each do |line|
 			if line.match("警報")
 				puts "--#{line.strip} | color=#{$wrncolor}"
@@ -3228,18 +3211,7 @@ for i in 0..1
 				puts "--#{line.strip} | color=#{$advcolor}"
 			end
 		end
-	else
-		puts "#{date} | color=#{$textcolor}"
-		"#{formatdaysmenu(days[i])}".each_line do |line|
-			puts "--#{line.strip} | color=#{$textcolor}"
-		end
 	end
-	rain = ['－','－','－','－']
-	days[i][:pop].reverse.each_with_index do |x,i|
-		rain[3-i] = x
-	end
-	print "--雨　#{rain.join(' ')} | color=white\n"
-	
 	icon = forecasticon(days[i][:weather],istoday)
 	print "\033[#{$textansi}m"
 	
