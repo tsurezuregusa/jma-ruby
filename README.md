@@ -1,4 +1,4 @@
-# jma.bitbar
+# jma-ruby
 
 Display local weather in Japan with BitBar/SwiftBar/xBar
 

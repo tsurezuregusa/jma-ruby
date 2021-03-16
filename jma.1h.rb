@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 # <bitbar.title>Japan Weather</bitbar.title>
-# <bitbar.version>0.7</bitbar.version>
+# <bitbar.version>0.8</bitbar.version>
 # <bitbar.author.github>tsurezuregusa</bitbar.author.github>
 # <bitbar.desc>Display local weather in Japan</bitbar.desc>
 # <bitbar.dependencies>ruby >= 2.4, imagemagick, rubygems: activesupport, nokogiri, faraday, rmagick, nkf, mk_sunmoon</bitbar.dependencies>
@@ -29,7 +29,7 @@ $darkskyapi = nil
 $openweatherapi = nil
 $openweatherloc = '1850147' # 東京
 $visualcrossingapi = nil
-$climacellapi = nil
+$climacellapi = 'xxx'
 
 # https://www.jma.go.jp/bosai/#area_type=offices&area_code=******
 $pref = '130000' # 東京都
@@ -62,7 +62,7 @@ $radxb = 227
 $radya = 100
 $radyb = 101
 
-### satmap64とradmap64に、mapgen.rbの出力を
+### satmap64とradmap64に、mapgen.rbの出力を以下に
 
 satmap64 = "iVBORw0KGgoAAAANSUhEUgAAAwAAAAMACAMAAACkX/C8AAAJJmlDQ1BpY2MA
 AEiJlZVnUJNZF8fv8zzphUASQodQQ5EqJYCUEFoo0quoQOidUEVsiLgCK4qI
@@ -3105,7 +3105,11 @@ elsif not $climacellapi.nil?
 	cloudcover = (cccurrent['cloudCover']).round(0) # %
 	cloudbase = cccurrent['cloudBase'] # km
 	cloudceiling = cccurrent['cloudCeiling'] # km
-	clouds = "#{cloudcover}% (#{cloudbase}→#{cloudceiling} km)"
+	clouds = "#{cloudcover}%"
+	clouds += " (" unless cloudbase.nil? and cloudceiling.nil?
+	clouds += "#{cloudbase}→" unless cloudbase.nil?
+	clouds += "#{cloudceiling}" unless cloudceiling.nil?
+	clouds += " km)" unless cloudbase.nil? and cloudceiling.nil?
 	visibility = cccurrent['visibility'].to_f.round(0) # km
 	icon = currenticon(cccurrent['weatherCode'].to_i)
 	epaindex = cccurrent['epaIndex'].to_i
