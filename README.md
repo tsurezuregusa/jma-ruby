@@ -26,7 +26,7 @@ Requires ruby >= 2.4, imagemagick, rubygems: activesupport, nokogiri, faraday, r
 
 **温**　気温（体感温度※）一日間の最低最高気温、観測時
 
-**湿**　対湿度（露点）
+**湿**　相対湿度（露点）
 
 **圧**　気圧
 
@@ -50,14 +50,12 @@ Requires ruby >= 2.4, imagemagick, rubygems: activesupport, nokogiri, faraday, r
 
 　　　　　　　　　　　　　　　　　  2͔0͐ => ≤16〜20〜≥24度（±4以上）
 
-　　　降水確率　0%:　　10%:＿　20%:▁　30%:▂　40%:▃　50%:▄
-
-　　　　　　　　60%:▅　70%:▆　80%:▇　90%:█　100%:▓
+　　　降水確率　10% ＿▁▂▃▄▅▆▇█▓ 100%
 
 ※　体感温度は有効温度の公式によって計算される ([参照](https://link.springer.com/article/10.1007/s00484-011-0453-2)).
 
 ---
 
-地図データは[国土地理院](https://maps.gsi.go.jp/vector/)を基に作成
+地図データは[国土地理院](https://maps.gsi.go.jp/vector/)の白地図を基に作成
 
 アイコンは、「[Climacons](http://adamwhitcroft.com/climacons/)」Adam Whitcroft氏が作成【[出典](https://github.com/christiannaths/Climacons-Font)】（矢印などは自作）
