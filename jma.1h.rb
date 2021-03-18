@@ -4,7 +4,7 @@
 # <bitbar.version>0.8</bitbar.version>
 # <bitbar.author.github>tsurezuregusa</bitbar.author.github>
 # <bitbar.desc>Display local weather in Japan</bitbar.desc>
-# <bitbar.dependencies>ruby >= 2.4, imagemagick, rubygems: activesupport, nokogiri, faraday, rmagick, nkf, mk_sunmoon</bitbar.dependencies>
+# <bitbar.dependencies>ruby >= 2.4; imagemagick; rubygems: activesupport, nokogiri, faraday, rmagick, nkf, mk_sunmoon</bitbar.dependencies>
 
 require 'open-uri'
 require 'faraday'
@@ -2183,15 +2183,15 @@ WEATHERCODEICON = {
 	209 => [FOG], # 霧
 	210 => [CLOUD,THEN,FINECLOUD], # 曇後時々晴
 	211 => [CLOUD,THEN,FINE], # 曇後晴
-	212 => [CLOUD,THEN,ONCERAIN], # 曇後一時雨
+	212 => [CLOUD,THEN,RAIN], # 曇後一時雨
 	213 => [CLOUD,THEN,RAIN], # 曇後時々雨
 	214 => [CLOUD,THEN,RAIN], # 曇後雨
-	215 => [CLOUD,THEN,ONCERAIN], # 曇後一時雪
+	215 => [CLOUD,THEN,SNOW], # 曇後一時雪
 	216 => [CLOUD,THEN,SNOW], # 曇後時々雪
 	217 => [CLOUD,THEN,SNOW], # 曇後雪
 	218 => [CLOUD,THEN,RAINSNOW], # 曇後雨か雪
 	219 => [CLOUD,THEN,LIGHTNINGRAIN], # 曇後雨か雷雨
-	220 => [CLOUD,TWICE,ONCERAIN], # 曇朝夕一時雨
+	220 => [CLOUD,TWICE,RAIN], # 曇朝夕一時雨
 	221 => [ONCERAIN,THEN,CLOUD], # 曇朝の内一時雨
 	222 => [CLOUD,ONCE,RAIN], # 曇夕方一時雨
 	223 => [CLOUD,SOME,RAIN], # 曇日中時々晴
@@ -3107,8 +3107,8 @@ elsif not $climacellapi.nil?
 	cloudceiling = cccurrent['cloudCeiling'] # km
 	clouds = "#{cloudcover}%"
 	clouds += " (" unless cloudbase.nil? and cloudceiling.nil?
-	clouds += "#{cloudbase}→" unless cloudbase.nil?
-	clouds += "#{cloudceiling}" unless cloudceiling.nil?
+	clouds += "#{cloudbase}" unless cloudbase.nil?
+	clouds += "~#{cloudceiling}" unless cloudceiling.nil?
 	clouds += " km)" unless cloudbase.nil? and cloudceiling.nil?
 	visibility = cccurrent['visibility'].to_f.round(0) # km
 	icon = currenticon(cccurrent['weatherCode'].to_i)
