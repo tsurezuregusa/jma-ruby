@@ -16,11 +16,11 @@ Requires ruby >= 2.4, imagemagick, rubygems: activesupport, nokogiri, faraday, r
 
 ## TODO
 
-台風地図
+台風地図点検
 
 警報はデータ不足のため全種類未点検
 
-![screenshot](https://user-images.githubusercontent.com/589440/115319716-e88e1700-a16f-11eb-8d1a-6b9d82d35539.gif)
+![screenshot](https://user-images.githubusercontent.com/589440/115321646-c72f2a00-a173-11eb-9221-1a9a0f8e3b02.gif)
 
 ## 凡例
 
