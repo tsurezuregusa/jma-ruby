@@ -29,6 +29,13 @@ $radxb = 227
 $radya = 100
 $radyb = 101
 
+# 台風用衛星写真座標
+# 大概変更不要
+$typhxa = 12
+$typhxb = 15
+$typhya = 5
+$typhyb = 8
+
 ####
 
 ## satmap
@@ -87,3 +94,30 @@ radmap.negate.write("./radmap-light-test.png")
 
 puts "radmap64 = \"#{Base64.encode64(radmap.to_blob).strip}\""
 
+## typhmap
+
+$typhmaplist = Magick::ImageList.new
+
+for i in $typhxa..$typhxb
+	ilist = Magick::ImageList.new
+	for j in $typhya..$typhyb
+		url = "https://www.jma.go.jp/tile/jma/sat/4/#{i}/#{j}.png"
+		png = Magick::Image.from_blob(URI.open(url).read) do |img|
+			img.format = 'PNG'
+			img.background_color = 'transparent'
+		end
+		img = png[0].modulate(1.0,1.0,1.0).to_blob
+		# ↑ modulate => 明度・彩度・色相を変更（1.0 == 100% == 変更なし）
+		list = Magick::ImageList.new
+		ilist.from_blob(img)
+		ilist += list
+	end
+	row = ilist.append(true)
+	$typhmaplist.push(row)
+end
+
+typhmap = $typhmaplist.append(false)
+
+typhmap.write(BASEMAP)
+
+puts "$typhmap64 = \"#{Base64.encode64(typhmap.to_blob).strip}\""

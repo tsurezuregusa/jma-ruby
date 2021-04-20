@@ -2,11 +2,11 @@
 
 Display local weather in Japan with BitBar/SwiftBar/xBar
 
-日本気象情報をBitBar/SwiftBar/xBarで表示
+日本気象情報をBitBar/[SwiftBar](https://github.com/swiftbar/SwiftBar/)/[xBar](https://github.com/matryer/xbar)で表示
 
 気象庁ホームページリニューアル版に対応（ほとんど）JSON万歳 ＼(^o^)／
 
-`mapgen.rb`で白地図を作成、地域コードをサイトから取得、スクリプト冒頭に書き込むこと
+`mapgen.rb`で白地図を作成、地域コードをサイトまたは[JSON](https://www.jma.go.jp/bosai/common/const/area.json)から取得、スクリプト冒頭に書き込むこと
 
 DarkSkyサービス終了に向け、観測データは気象庁から
 
@@ -20,7 +20,7 @@ Requires ruby >= 2.4, imagemagick, rubygems: activesupport, nokogiri, faraday, r
 
 警報はデータ不足のため全種類未点検
 
-![screenshot](https://user-images.githubusercontent.com/589440/111020619-33717d80-83bf-11eb-9bce-e318f49e1c58.png)
+![screenshot](https://user-images.githubusercontent.com/589440/115319716-e88e1700-a16f-11eb-8d1a-6b9d82d35539.gif)
 
 ## 凡例
 
