@@ -2114,8 +2114,8 @@ RADMAP = Magick::Image.from_blob(Base64::decode64(radmap64)) do |img|
 	img.format = 'PNG'
 	img.background_color = 'transparent'
 end.first
-RADMAP.image_type = Magick::TrueColorType
 RADMAP.negate unless isdarkmode
+RADMAP.colorspace = Magick::RGBColorspace
 
 # https://ja.ojit.com/so/ruby-on-rails/3795657
 
@@ -4184,12 +4184,12 @@ begin
 		$radimglist.push(row)
 	end
 	
-	radpng = $radimglist.append(false).modulate(0.9,2.0,1.0)
+	radpng = $radimglist.append(false).modulate(0.9,2.0,1.0).level(0,0.4)
 	
 	if isdarkmode
-		radimg = RADMAP.dissolve(radpng,0.3,1, Magick::CenterGravity).level(Magick::QuantumRange/30,Magick::QuantumRange*0.85)
+		radimg = RADMAP.dissolve(radpng,0.2,1, Magick::CenterGravity)
 	else
-		radimg = RADMAP.negate.modulate(0.7,1.0,1.0).dissolve(radpng,0.7,1, Magick::CenterGravity).level(Magick::QuantumRange/30,Magick::QuantumRange*0.85)
+		radimg = RADMAP.modulate(0.7,1.0,1.0).dissolve(radpng,0.7,1, Magick::CenterGravity).level(Magick::QuantumRange/30,Magick::QuantumRange*0.85)
 	end
 	
 	r64 = "| refresh=true image=#{Base64.encode64(radimg.to_blob).gsub(/\n/, '')}"
